@@ -1,87 +1,143 @@
-## Contributing to OM1
+# Contributing Guide
 
-We welcome contributions from the community!  OM1 is an open-source project, and we appreciate your help in making it better.  Whether you're fixing bugs, adding features, improving documentation, or suggesting new ideas, your contributions are valuable.
+Thank you for contributing to the OpenMind Interaction Autonomy project!
 
-Before contributing, please take a moment to read through the following guidelines. This helps streamline the process and ensures everyone is on the same page.
+## Project Philosophy
 
-**Ways to Contribute:**
+- **Minimal Overhead, Clear Rules**: Operate with simple and clear rules
+- **main-only Strategy**: Only one long-term branch (main)
+- **Requirement-driven Development**: All features are linked to Requirement IDs
+- **PR-based Collaboration**: All changes go through PRs
+- **Version Management with Tags Only**: No release branches
 
-*   **Report Bugs:** If you find a bug, please [open an issue](https://github.com/OpenMind/OM1/issues) on GitHub. Be sure to include:
-    *   A clear and concise description of the bug.
-    *   Steps to reproduce the bug.
-    *   Your operating system and Python version.
-    *   Relevant error messages or stack traces.
-    *   Screenshots (if applicable).
+## Branch Strategy
 
-*   **Suggest Features:**  Have an idea for a new feature or improvement?  [Open an issue](https://github.com/OpenMind/OM1/issues) on GitHub and describe your suggestion. Explain the motivation behind the feature and how it would benefit OM1 users.  We encourage discussion on feature requests before implementation.
+### Long-term Branches
+- `main`: The only long-term branch
 
-*   **Improve Documentation:**  Good documentation is crucial.  If you find anything unclear, incomplete, or outdated in the documentation, please submit a pull request with your changes. This includes the README, docstrings, and any other documentation files. Visit [OM1 docs](https://docs.openmind.org/), and [source code](https://github.com/OpenMind/OM1/tree/main/docs).
+### Working Branches
+- **Feature Branches**: `feat/<REQUIREMENT-ID>-short-description`
+  - Examples: `feat/NAV-001-nav-execution`, `feat/AGT-002-action-router`
+- **Non-feature Work**: `chore/<short-description>`
+  - Examples: `chore/update-docs`, `chore/refactor-config-loader`
 
-*   **Fix Bugs:** Browse the [open issues](https://github.com/OpenMind/OM1/issues) and look for bugs labeled "bug" or "help wanted." If you want to tackle a bug, comment on the issue to let us know you're working on it.
+### Rules
+- Use lowercase
+- Use hyphens (-) (no spaces)
+- Concise but meaningful names
 
-*   **Implement Features:**  Check the [open issues](https://github.com/OpenMind/OM1/issues) for features labeled "enhancement" or "bounty" or "help wanted".  It's best to discuss your approach in the issue comments *before* starting significant development.
+## Requirement-driven Development
 
-*   **Write Tests:**  OM1 aims for high test coverage.  If you're adding new code, please include corresponding tests. If you find areas with insufficient test coverage, adding tests is a great contribution.
+### Requirement ID Format
+```
+<MODULE>-<NNN>
+```
 
-*   **Code Review:** Reviewing pull requests is a valuable way to contribute.  It helps ensure code quality and maintainability.
+### Module Prefixes
+- **AGT**: LLM / Agent / Decision
+- **NAV**: Navigation / Autonomy
+- **PER**: Perception / Sensors
+- **SYS**: Orchestration / Runtime / Integration
 
-**Contribution Workflow (Pull Requests):**
+### Examples
+- `NAV-001`: Navigation execution via action schema
+- `AGT-002`: Action router implementation
 
-1.  **Fork the Repository:**  Click the "Fork" button on the top-right of the OM1 repository page to create your own copy.
+### Principles
+- 1 Requirement ID = 1 feature branch
+- All feature changes are linked to Requirement IDs
+- Requirements are managed from a single source of truth
 
-2.  **Clone Your Fork with CLI:**
-    ```bash
-    git clone [https://github.com/](https://github.com/)<your-username>/OM1.git
-    cd OM1
-    ```
-    (Replace `<your-username>` with your GitHub username.)
+## PR / Commit / Merge Rules
 
-3.  **Create a Branch:**  Create a new branch for your work.  Use a descriptive name that reflects the purpose of your changes (e.g., `fix-bug-xyz`, `add-feature-abc`, `docs-improve-readme`).
-    ```bash
-    git checkout -b your-branch-name
-    ```
+### Merge Method
+- **Squash merge only**
+- main history is always in single commit units
 
-4.  **Make Changes:**  Make your code changes, add tests, and update documentation as needed.
+### PR / Commit Message Rules
+Only two types are used:
+- `feat: <summary>`
+- `chore: <summary>`
 
-5.  **Commit Changes:**  Commit your changes with clear and concise commit messages.  Follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification if possible (e.g., `feat: Add new feature`, `fix: Correct bug in module X`, `docs: Update README`).
-    ```bash
-    git commit -m "feat: Add support for XYZ"
-    ```
+Examples:
+```
+feat: NAV-001 navigation execution via action schema
+chore: update PROCESS.md
+```
 
-6.  **Push Changes:** Push your branch to your forked repository.
-    ```bash
-    git push origin your-branch-name
-    ```
+**Important**: Since we use squash merge, PR title = commit message that remains in main
 
-7.  **Create a Pull Request (PR):**  Go to the [original OM1 repository](https://github.com/OpenMind/OM1/) on GitHub. You should see a prompt to create a pull request from your newly pushed branch.  Click "Compare & pull request."
+### PR Template
 
-8.  **Write a Clear PR Description:**
-    *   Describe the purpose of your pull request.
-    *   Link to any relevant issues it addresses (e.g., "Closes #123").
-    *   Explain your changes and your design choices.
-    *   Include any relevant screenshots or GIFs (if applicable).
+- **For `feat/` branches only**: Use the PR template to verify testing before integration
+- The PR template includes a testing checklist to ensure features are tested before merging
+- Template location: `.github/pull_request_template.md`
+- For `chore/` branches, the template is optional
 
-9.  **Request Review:**  Your pull request will be reviewed by the maintainers.  Be prepared to address any feedback or make further changes.
+## Collaboration Structure
 
-10. **Merge:** Once your pull request is reviewed and approved, it will be merged into the main branch.
+### Teams
+- **core**: Architecture, integration, final responsibility
+  - Repo Admin permissions
+  - Has main merge permissions
+- **kist-collaborators**: Feature development, implementation
+  - Repo Write permissions
+  - Can create/review/approve PRs
+  - ❌ Cannot merge to main
 
-**Coding Style and Conventions:**
+### Branch Protection (main)
+- Direct push ❌
+- PR required
+- Approval ≥ 1
+- Squash merge only
+- Only core can merge
+- Deletion/force push to main prohibited
 
-*   **Code Style:**  Follow the [PEP 8](https://www.python.org/dev/peps/pep-0008/) style guide.  We may use a code formatter like `black` or `ruff` (check the `pyproject.toml` or `setup.cfg` for project-specific configuration).  Run `pre-commit run --all-files` before committing.
-*   **Docstrings:**  Write clear and comprehensive docstrings for all functions, classes, and modules.  We may use a specific docstring format (e.g., Google style, NumPy style).
-*   **Tests:** Write unit tests to ensure your code works as expected.  Use a testing framework like `pytest`.
-*   **Type Hints:** Use type hints (PEP 484) to improve code readability and maintainability.
+## Contribution Process
 
-**Code of Conduct:**
+1. **Check or Create Issue**
+   - Check existing issues
+   - Create new issue if needed
 
-We expect all contributors to be respectful and inclusive. Please follow GitHub's community guidelines and maintain a positive, collaborative environment.
+2. **Create Branch**
+   ```bash
+   git checkout -b feat/NAV-001-short-description
+   # or
+   git checkout -b chore/update-docs
+   ```
 
-**Getting Help:**
+3. **Commit Changes**
+   - Write clear commit messages
+   - Commit in small units
 
-If you have any questions or need help with the contribution process, feel free to:
+4. **Create PR**
+   - Push branch to remote
+   - Create PR on GitHub
+   - PR title: `feat: <summary>` or `chore: <summary>`
+   - **For `feat/` branches only**: Use the PR template (`.github/pull_request_template.md`) to verify testing before integration
+   - Include Requirement ID in PR description (if applicable)
 
-*   Open an issue on GitHub.
-*   Ask questions in the comments of relevant issues or pull requests.
-*   Join our [developer telegram group](https://t.me/openminddev).
+5. **Wait for Review**
+   - Wait for core team review
+   - Address feedback
 
-Thank you for contributing to OM1!
+6. **Merge**
+   - Core team performs squash merge
+
+## Coding Style
+
+### Python
+- Follow PEP 8 style guide
+- Type hints recommended
+- Write docstrings
+
+### ROS2
+- Follow ROS2 standard package structure
+- Write `package.xml` and `CMakeLists.txt` accurately
+
+## Version Management
+
+- **No release branches**
+- **Use git tags only** (vX.Y.Z format)
+- Tags are created only on main, by core only
+- Examples: `v0.1.0`, `v0.2.0`
