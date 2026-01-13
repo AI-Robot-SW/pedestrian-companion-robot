@@ -1,5 +1,8 @@
 <div align="center">
 
+<p align="center">
+  <img src="assets/banner.png" alt="Pedestrian Companion Robot Banner" style="max-width:80%; min-width:200px;" />
+</p>
 
 # Pedestrian Companion Robot
 
