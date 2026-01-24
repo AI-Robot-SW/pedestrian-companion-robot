@@ -43,6 +43,24 @@ git checkout -b chore/update-docs
 - Write clear commit messages
 - Commit in small units
 
+#### Implementation Guidelines
+When developing components for OM Cortex Runtime, utilize the implementation rules in `.cursor/skills/` to ensure consistency and quality:
+
+**Available Implementation Rules:**
+- `provider-implementation/SKILL.md`: Provider implementation guidelines
+- `background-implementation/SKILL.md`: Background implementation guidelines
+- `action-connector-implementation/SKILL.md`: Action Connector implementation guidelines
+- `sensor-implementation/SKILL.md`: Sensor (Input) implementation guidelines
+- `llm-implementation/SKILL.md`: LLM plugin implementation guidelines
+- `fuser-implementation/SKILL.md`: Fuser implementation guidelines
+
+**How to Use:**
+1. **Initial Draft**: Reference the appropriate SKILL.md file when creating new components to follow naming conventions, structure, and patterns.
+2. **Code Validation & Review**: Use the checklist and review guidelines in each SKILL.md to validate your implementation before committing.
+3. **Refactoring**: Use the rules to refactor existing code to match the established patterns and conventions.
+
+These rules help maintain consistency across the codebase and ensure all components follow the OM Cortex Runtime architecture principles.
+
 ### Step 4: Create Pull Request
 ```bash
 git push origin feat/NAV-001-short-description
