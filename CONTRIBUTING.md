@@ -9,7 +9,7 @@ Thank you for contributing to the Pedestrian Companion Robot project!
 ```
 
 **For Features:**
-- Branch: `feat/<REQUIREMENT-ID>-short-description`
+- Branch: `feat/<Task Name>-short-description`
 - PR Title: `feat: <summary>`
 - Use PR template for testing checklist
 
@@ -28,7 +28,7 @@ Thank you for contributing to the Pedestrian Companion Robot project!
 ### Step 2: Create Branch
 ```bash
 # For features
-git checkout -b feat/NAV-001-short-description
+git checkout -b feat/Task Name
 
 # For non-features
 git checkout -b chore/update-docs
