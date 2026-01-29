@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import threading
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Tuple
 
 from pyubx2 import UBXReader, UBXMessage, SET, UBX_PROTOCOL
 
