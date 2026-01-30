@@ -47,11 +47,12 @@ class UbxReaderThread(threading.Thread):
         measRate_ms: int = 100,
         navRate: int = 1,
         timeRef: int = 0,
+        write_lock: Optional[threading.RLock] = None,
         name: str = "UbxReader",
     ) -> None:
         super().__init__(daemon = True, name = name)
         self.ser = ser
-        self._lock = threading.Lock()
+        self.write_lock = write_lock or threading.RLock()
         self.shared = shared
         self.stop_evt = stop_evt
 
@@ -64,7 +65,7 @@ class UbxReaderThread(threading.Thread):
         self.join(timeout = 2.0)
 
     def cfg_interface(self) -> None:
-        with self._lock:
+        with self.write_lock:
             self.ser.write(
                 UBXMessage(
                     "CFG", "CFG-RATE", SET,
@@ -118,14 +119,16 @@ class UbxReaderThread(threading.Thread):
 def start_ubx_thread(
     ser,
     measRate_ms: int = 100,
+    write_lock: Optional[threading.RLock] = None
 ) -> Tuple[UbxReaderThread, UbxSharedState]:
     shared = UbxSharedState()
     stop_evt = threading.Event()
     th = UbxReaderThread(
-        ser=ser,
-        shared=shared,
-        stop_evt=stop_evt,
-        measRate_ms=measRate_ms,
+        ser = ser,
+        shared = shared,
+        stop_evt = stop_evt,
+        measRate_ms = measRate_ms,
+        write_lock = write_lock
     )
     th.start()
     

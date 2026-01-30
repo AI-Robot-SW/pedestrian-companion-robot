@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Optional, Dict, Any
 
 from .ubx_thread import start_ubx_thread, UbxSharedState, UbxPvtRecord
@@ -12,9 +13,11 @@ class GnssProvider:
         self,
         ser,
         measRate_ms: int = 100,
+        write_lock: Optional[threading.RLock] = None
     ) -> None:
         self.ser = ser
         self.measRate_ms = measRate_ms
+        self.write_lock = write_lock or threading.RLock()
 
         self._thread = None
         self._shared: Optional[UbxSharedState] = None
@@ -24,8 +27,9 @@ class GnssProvider:
             return
 
         self._thread, self._shared = start_ubx_thread(
-            ser=self.ser,
-            measRate_ms=self.measRate_ms,
+            ser = self.ser,
+            measRate_ms = self.measRate_ms,
+            write_lock = self.write_lock
         )
 
     def stop(self) -> None:

@@ -2,6 +2,7 @@
 
 import time
 import serial
+import threading
 
 from location_provider.gnss_provider.ubx_thread import start_ubx_thread
 
@@ -13,9 +14,12 @@ def main():
         timeout=1.0
     )
 
+    write_lock = threading.RLock()
+
     th, shared = start_ubx_thread(
-        ser=ser,
-        measRate_ms=100
+        ser = ser,
+        measRate_ms = 100,
+        write_lock = write_lock
     )
 
     try:
