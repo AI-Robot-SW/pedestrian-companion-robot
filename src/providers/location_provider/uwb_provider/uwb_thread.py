@@ -93,15 +93,15 @@ class UwbReaderThread(threading.Thread):
 
     @staticmethod
     def parse_lep(line: bytes) -> Optional[UwbPosRecord]:
-            idx = line.find(b"POS,")
+        idx = line.find(b"POS,")
 
-            if idx < 0:
-                return None
-            
-            line = line[idx:]
-            parts = line.split(b",")
+        if idx < 0:
+            return None
+        
+        line = line[idx:]
+        parts = line.split(b",")
 
-            return UwbPosRecord(
+        return UwbPosRecord(
             t_monotonic=time.monotonic(),
             x_m=float(parts[1]),
             y_m=float(parts[2]),
