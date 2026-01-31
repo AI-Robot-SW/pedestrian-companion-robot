@@ -2430,14 +2430,17 @@ dependencies = [
     { name = "aiohttp" },
     { name = "audiosegment" },
     { name = "bezier" },
+    { name = "black" },
     { name = "bleak" },
     { name = "cdp-sdk" },
     { name = "cv-bridge" },
+    { name = "cyclonedds" },
     { name = "deepface" },
     { name = "dimo-python-sdk" },
     { name = "eclipse-zenoh" },
     { name = "fastapi" },
     { name = "hid" },
+    { name = "isort" },
     { name = "jinja2" },
     { name = "json5" },
     { name = "jsonschema" },
@@ -2448,15 +2451,20 @@ dependencies = [
     { name = "openai" },
     { name = "opencv-python" },
     { name = "pillow" },
+    { name = "pre-commit" },
     { name = "py-mjpeg" },
     { name = "pyaudio" },
     { name = "pycdr2" },
     { name = "pydub" },
     { name = "pynmeagps" },
     { name = "pynput" },
+    { name = "pyright" },
     { name = "pyserial" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
+    { name = "ruff" },
     { name = "scipy" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -2466,6 +2474,7 @@ dependencies = [
     { name = "torchvision" },
     { name = "typer" },
     { name = "ultralytics" },
+    { name = "unitree-sdk2py" },
     { name = "uvicorn" },
     { name = "web3" },
     { name = "websockets" },
@@ -2479,31 +2488,23 @@ macos = [
     { name = "osascript" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "black" },
-    { name = "isort" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.3" },
     { name = "audiosegment" },
     { name = "bezier" },
+    { name = "black", specifier = ">=24.10.0" },
     { name = "bleak" },
     { name = "cdp-sdk", specifier = "==0.21.0" },
     { name = "cv-bridge" },
+    { name = "cyclonedds", specifier = "==0.10.2" },
     { name = "cyclonedds", marker = "extra == 'dds'", specifier = "==0.10.2" },
     { name = "deepface", specifier = ">=0.0.81" },
     { name = "dimo-python-sdk", git = "https://github.com/openminddev/dimo-python-sdk.git?rev=6b47fcd28654a4145cedee649a0999a8eb08a2f6" },
     { name = "eclipse-zenoh", specifier = ">=1.4.0" },
     { name = "fastapi", specifier = ">=0.110.0" },
     { name = "hid" },
+    { name = "isort", specifier = ">=5.13.2" },
     { name = "jinja2", specifier = ">=3.1.3" },
     { name = "json5" },
     { name = "jsonschema" },
@@ -2515,15 +2516,20 @@ requires-dist = [
     { name = "opencv-python" },
     { name = "osascript", marker = "extra == 'macos'" },
     { name = "pillow", specifier = ">=11.1.0" },
+    { name = "pre-commit", specifier = ">=4.1.0" },
     { name = "py-mjpeg" },
     { name = "pyaudio" },
     { name = "pycdr2" },
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "pynmeagps" },
     { name = "pynput", specifier = ">=1.8.1" },
+    { name = "pyright", specifier = ">=1.1.406" },
     { name = "pyserial" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-asyncio", specifier = ">=0.25.2" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "ruff", specifier = ">=0.9.3" },
     { name = "scipy" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -2533,22 +2539,12 @@ requires-dist = [
     { name = "torchvision" },
     { name = "typer", specifier = ">=0.15.1" },
     { name = "ultralytics" },
+    { name = "unitree-sdk2py", git = "https://github.com/unitreerobotics/unitree_sdk2_python.git" },
     { name = "uvicorn", specifier = ">=0.27.1" },
     { name = "web3" },
     { name = "websockets", specifier = ">=12.0" },
 ]
 provides-extras = ["dds", "macos"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "black", specifier = ">=24.10.0" },
-    { name = "isort", specifier = ">=5.13.2" },
-    { name = "pre-commit", specifier = ">=4.1.0" },
-    { name = "pyright", specifier = ">=1.1.406" },
-    { name = "pytest", specifier = ">=8.3.4" },
-    { name = "pytest-asyncio", specifier = ">=0.25.2" },
-    { name = "ruff", specifier = ">=0.9.3" },
-]
 
 [[package]]
 name = "om1-modules"
@@ -4438,6 +4434,16 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c2/d8/e43a8bfcb03ff036119d098a7ea27be9f0adb715543ed6bd83b16cda83dc/ultralytics_thop-2.0.14.tar.gz", hash = "sha256:38ebfdbd3cd8dafdc3d26ec3a7d4f604fbeed5e69a74e61a48060b39736c945c", size = 28793, upload-time = "2025-01-16T21:38:06.29Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a6/10/251f036b4c5d77249f9a119cc89dafe8745dc1ad1f1a5f06b6a3988ca454/ultralytics_thop-2.0.14-py3-none-any.whl", hash = "sha256:720b421e2459179fee21ec8f730d242a20774cd4b0a00a58d02351a39ec3881c", size = 26517, upload-time = "2025-01-16T21:38:04.722Z" },
+]
+
+[[package]]
+name = "unitree-sdk2py"
+version = "1.0.1"
+source = { git = "https://github.com/unitreerobotics/unitree_sdk2_python.git#a035adeaa6f8ea171bef9a43e8477abb87a0b35e" }
+dependencies = [
+    { name = "cyclonedds" },
+    { name = "numpy" },
+    { name = "opencv-python" },
 ]
 
 [[package]]
