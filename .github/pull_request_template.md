@@ -1,14 +1,9 @@
 ## Testing Checklist
 
-- [ ] I have tested this feature before integration
-- [ ] Tests pass locally
-- [ ] No breaking changes (or breaking changes are documented)
+- [O] I have tested this feature -> Unitest(SW), HW Integration Test Included
+- [O] Tests All passed
 
 ## Description
 
 <!-- Briefly describe your changes -->
-
-## Requirement ID
-
-<!-- If applicable, include Requirement ID (e.g., NAV-001) -->
 
