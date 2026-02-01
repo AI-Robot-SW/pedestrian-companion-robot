@@ -198,6 +198,40 @@ class SpeakerProvider:
             except Exception as e:
                 logging.error(f"Playback callback error: {e}")
 
+    def get_available_devices(self) -> List[dict]:
+        """
+        사용 가능한 출력 디바이스 목록 반환.
+
+        Returns
+        -------
+        List[dict]
+            출력 가능한 디바이스 정보 리스트
+        """
+        devices = []
+        audio_interface = None
+
+        try:
+            # 임시 PyAudio 인스턴스 생성 (running 상태가 아닐 수 있음)
+            if self._audio_interface:
+                audio_interface = self._audio_interface
+            else:
+                audio_interface = pyaudio.PyAudio()
+
+            for i in range(audio_interface.get_device_count()):
+                info = audio_interface.get_device_info_by_index(i)
+                # 출력 채널이 있는 디바이스만 포함
+                if info.get("maxOutputChannels", 0) > 0:
+                    devices.append(info)
+
+        except Exception as e:
+            logging.error(f"Failed to get available devices: {e}")
+        finally:
+            # 임시로 생성한 경우에만 종료
+            if audio_interface and audio_interface != self._audio_interface:
+                audio_interface.terminate()
+
+        return devices
+
     def _find_device_by_name(self, name: str) -> Optional[int]:
         """
         디바이스 이름으로 출력 디바이스 인덱스 찾기.
