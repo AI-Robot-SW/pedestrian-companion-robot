@@ -99,21 +99,37 @@ class UnitreeGo2Provider:
             self._data = {"initialized": True}
             logging.info("UnitreeGo2Provider started")
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
         """
         Stop the provider.
 
-        Calls StopMove. Does not destroy SportClient (SDK may not support re-init).
+        Calls StopMove and clears state. Does not destroy SportClient (SDK may not
+        support re-init). Returns True if StopMove succeeded or no client was set,
+        False on RPC error or exception.
+
+        Returns
+        -------
+        bool
+            True if stop completed (StopMove accepted or nothing to send), False otherwise.
         """
         with self._lock:
             self._running = False
-        if self._sport_client is not None:
-            try:
-                self._sport_client.StopMove()
-            except Exception as e:
-                logging.error(f"UnitreeGo2Provider: StopMove on stop: {e}")
         self._data = None
-        logging.info("UnitreeGo2Provider stopped")
+        if self._sport_client is None:
+            logging.info("UnitreeGo2Provider stopped")
+            return True
+        try:
+            code = self._sport_client.StopMove()
+            if code != 0:
+                logging.error("UnitreeGo2Provider: StopMove on stop failed (code=%s)", code)
+                logging.info("UnitreeGo2Provider stopped")
+                return False
+            logging.info("UnitreeGo2Provider stopped")
+            return True
+        except Exception as e:
+            logging.error("UnitreeGo2Provider: StopMove on stop: %s", e)
+            logging.info("UnitreeGo2Provider stopped")
+            return False
 
     def move(self, vx: float, vy: float, vyaw: float) -> bool:
         """
