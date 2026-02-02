@@ -49,11 +49,14 @@ class GnssProvider:
             return None
 
         return {
-            "timestamp": rec.t_monotonic,
-            "fix_type": rec.fixType,
-            "num_sv": rec.numSV,
-            "lat": rec.lat,
+            "t_monotonic": rec.t_monotonic,
+            "iTOW": rec.iTOW,
+            "fixType": rec.fixType,
+            "diffSoln": rec.diffSoln,
+            "carrSoln": rec.carrSoln,
+            "numSV": rec.numSV,
             "lon": rec.lon,
-            "h_acc_m": rec.hAcc_m,
-            "p_dop": rec.pDOP,
+            "lat": rec.lat,
+            "hAcc_m": rec.hAcc_m,
+            "pDOP": rec.pDOP,
         }
