@@ -27,7 +27,8 @@ def main():
             rec = shared.get_latest()
             if rec:
                 print(
-                    f"[PVT] fix={rec.fixType}, "
+                    f"[PVT] utc = {rec.hour}/{rec.min}/{rec.second}, validTime={rec.validTime}", 
+                    f"fix={rec.fixType}, "
                     f"sv={rec.numSV}, "
                     f"lat={rec.lat} lon={rec.lon}, "
                     f"hAcc={rec.hAcc_m:.2f}m, "
