@@ -42,9 +42,7 @@ def test_background_initialization_creates_provider(mock_provider_class, config)
         align_depth_to_color=True,
     )
 
-    # Background 코드에서 provider는 self.provider에 저장됨
     assert background.realsense_camera_provider is mock_provider_instance
-
     # start()는 run()에서 호출되므로 __init__에서는 호출되지 않아야 함
     mock_provider_instance.start.assert_not_called()
 
