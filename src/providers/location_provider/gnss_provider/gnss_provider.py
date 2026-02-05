@@ -50,7 +50,10 @@ class GnssProvider:
 
         return {
             "t_monotonic": rec.t_monotonic,
-            "iTOW": rec.iTOW,
+            "hour": rec.hour,
+            "minute": rec.minute,
+            "second": rec.second,
+            "validTime": rec.validTime,
             "fixType": rec.fixType,
             "diffSoln": rec.diffSoln,
             "carrSoln": rec.carrSoln,

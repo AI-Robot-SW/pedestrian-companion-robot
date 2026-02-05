@@ -14,7 +14,7 @@ from pyubx2 import UBXReader, UBXMessage, SET, UBX_PROTOCOL
 class UbxPvtRecord:
     t_monotonic: float
     hour: Optional[int]
-    min: Optional[int]
+    minute: Optional[int]
     second: Optional[int]
     validTime: Optional[bool]
     fixType: Optional[int]
@@ -97,7 +97,7 @@ class UbxReaderThread(threading.Thread):
         return UbxPvtRecord(
             t_monotonic = time.monotonic(),
             hour = getattr(parsed, "hour", None),
-            min = getattr(parsed, "min", None),
+            minute = getattr(parsed, "min", None),
             second = getattr(parsed, "second", None),
             validTime = getattr(parsed, "validTime", None),
             fixType = getattr(parsed, "fixType", None),
