@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Callable, List, Optional, Tuple
+import time
 
 import torch
 import pyaudio
@@ -339,3 +340,33 @@ class SileroVAD:
         if last_prob is not None:
             self._last_prob = last_prob
         return last_prob
+
+
+class LatencyTracker:
+    def __init__(self, sample_rate: int, channels: int = 1, sample_width_bytes: int = 2):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.sample_width_bytes = sample_width_bytes
+        self.stream_start_ts = None
+        self.samples_sent = 0
+        self.last_audio_end_ts = None
+
+    def on_start(self):
+        self.stream_start_ts = time.perf_counter()
+        self.samples_sent = 0
+        self.last_audio_end_ts = self.stream_start_ts
+
+    def on_send_audio(self, audio_chunk: bytes):
+        if self.stream_start_ts is None:
+            self.on_start()
+        samples = len(audio_chunk) // (self.sample_width_bytes * self.channels)
+        self.samples_sent += samples
+        # 오디오 타임라인 기준 “마지막 오디오가 끝나는 시각”
+        self.last_audio_end_ts = self.stream_start_ts + (self.samples_sent / self.sample_rate)
+
+    def on_result(self):
+        if self.last_audio_end_ts is None:
+            return None
+        now = time.perf_counter()
+        latency = now - self.last_audio_end_ts
+        return max(0.0, latency)
