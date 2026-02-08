@@ -39,6 +39,7 @@ logs/
 *.jpg
 /zenohdb
 /locations
+*.bkp
 
 # Mode system state files
 config/memory
