@@ -57,6 +57,8 @@ dds = [
     "cyclonedds==0.10.2"
 ]
 macos = ["osascript"]
+# BEV CUDA kernel (requires NVIDIA CUDA Toolkit). Omit if no GPU / no cuda.h.
+cuda = ["pycuda"]
 
 [dependency-groups]
 dev = [
@@ -77,6 +79,8 @@ addopts = "-m \"not integration\""
 norecursedirs = ["src/unitree", "system_hw_test", "src/ubtech"]
 markers = [
     "integration: marks tests as integration tests",
+    "no_pycuda: tests that do not require pycuda/CUDA (parse, occupancy grid, lifecycle, data)",
+    "cuda: tests that require GPU/pycuda (e.g. BEV kernel); run on machine with NVIDIA CUDA",
 ]
 
 [tool.black]
