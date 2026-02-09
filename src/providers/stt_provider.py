@@ -112,8 +112,8 @@ GOOGLE_CLOUD_STT_DEFAULT_CONFIG = {
     "sample_rate_hertz": 16000,
     "language_code": "ko-KR",
     "enable_automatic_punctuation": True,
-    "model": 'telephony', #"latest_long",  # 또는 "latest_short", "phone_call", "video", "default"
-    "use_enhanced": True,  # Enhanced 모델 사용 (더 정확하지만 비용 증가)
+    "model": 'telephony', 
+    "use_enhanced": True, 
 }
 
 
@@ -276,6 +276,12 @@ class STTProvider:
         self._audio_drops = 0
         self._audio_sent = 0
         self._audio_consumed = 0
+
+        # AudioProvider 큐 소비 스레드
+        self._audio_provider: Optional["AudioProvider"] = None
+        self._audio_consumer_thread: Optional[threading.Thread] = None
+        self._audio_consumer_stop_event = threading.Event()
+        self._audio_poll_timeout = 0.1
 
         # Google Cloud Speech 클라이언트는 start()에서 초기화
 
@@ -462,11 +468,25 @@ class STTProvider:
                 break
             self._audio_consumed += 1
             if self._audio_consumed == 1 or self._audio_consumed % 50 == 0:
-                logging.info(
-                    "Google streaming consumed audio chunks=%d (queue size=%d)",
-                    self._audio_consumed,
-                    self._audio_queue.qsize(),
-                )
+                stt_queue_size = self._audio_queue.qsize()
+                if self._audio_provider is not None:
+                    audio_stats = self._audio_provider.get_buffer_stats()
+                    logging.info(
+                        "Google streaming consumed audio chunks=%d "
+                        "(stt_queue=%d, audio_buffer=%d/%d, drops=%d, latency_ms=%.1f)",
+                        self._audio_consumed,
+                        stt_queue_size,
+                        int(audio_stats["queued_chunks"]),
+                        int(audio_stats["max_chunks"]),
+                        int(audio_stats["drops"]),
+                        audio_stats["approx_latency_ms"],
+                    )
+                else:
+                    logging.info(
+                        "Google streaming consumed audio chunks=%d (stt_queue=%d)",
+                        self._audio_consumed,
+                        stt_queue_size,
+                    )
             yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
     def _handle_google_response(self, response) -> None:
@@ -514,6 +534,52 @@ class STTProvider:
             logging.error(f"Google streaming error: {e}")
         finally:
             logging.info("Google streaming worker stopped")
+
+    def _audio_consumer_loop(self) -> None:
+        while not self._audio_consumer_stop_event.is_set():
+            if not self.running or self._audio_provider is None:
+                self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
+                continue
+            if not self._audio_provider.running:
+                self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
+                continue
+            chunk = self._audio_provider.get_audio_chunk(
+                timeout=self._audio_poll_timeout
+            )
+            if chunk:
+                self.send_audio(chunk)
+
+    def _start_audio_consumer(self) -> None:
+        if self._audio_consumer_thread and self._audio_consumer_thread.is_alive():
+            return
+        self._audio_consumer_stop_event.clear()
+        self._audio_consumer_thread = threading.Thread(
+            target=self._audio_consumer_loop, daemon=True
+        )
+        self._audio_consumer_thread.start()
+
+    def _stop_audio_consumer(self) -> None:
+        self._audio_consumer_stop_event.set()
+        if self._audio_consumer_thread is not None:
+            self._audio_consumer_thread.join(timeout=2.0)
+
+    def attach_audio_provider(
+        self, audio_provider: "AudioProvider", poll_timeout: float = 0.1
+    ) -> None:
+        """
+        AudioProvider 큐를 소비하도록 연결.
+
+        Parameters
+        ----------
+        audio_provider : AudioProvider
+            오디오 데이터 큐를 제공하는 AudioProvider
+        poll_timeout : float
+            큐 대기 시간 (초)
+        """
+        self._audio_provider = audio_provider
+        self._audio_poll_timeout = max(0.01, poll_timeout)
+        if self.running:
+            self._start_audio_consumer()
 
     def send_audio(self, audio_chunk: bytes) -> None:
         """
@@ -636,6 +702,8 @@ class STTProvider:
         # self._ws_client.send_message(config_message)
 
         logging.info(f"STTProvider started with language={self.language_code}")
+        if self._audio_provider is not None:
+            self._start_audio_consumer()
 
     def stop(self) -> None:
         """
@@ -662,6 +730,7 @@ class STTProvider:
             # self._ws_client.stop()
             pass
 
+        self._stop_audio_consumer()
         logging.info("STTProvider stopped")
 
     def configure(
