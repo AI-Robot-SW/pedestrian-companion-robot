@@ -14,7 +14,7 @@ Dependencies:
 Lifecycle:
     1. BackgroundOrchestrator가 STTBg 인스턴스 생성
     2. STTBg.__init__()에서 STTProvider 초기화 및 시작
-    3. AudioProvider에 오디오 콜백 등록
+    3. AudioProvider 큐를 STTProvider에 연결
     4. run() 메서드가 주기적으로 호출되어 상태 모니터링
     5. 시스템 종료 시 STTProvider 정리
 
@@ -33,8 +33,8 @@ from pydantic import Field
 
 from backgrounds.base import Background, BackgroundConfig
 
-from ...providers.stt_provider import STTProvider, STTBackend
-from ...providers.audio_provider import AudioProvider
+from providers.stt_provider import STTProvider, STTBackend
+from providers.audio_provider import AudioProvider
 
 
 class STTBgConfig(BackgroundConfig):
@@ -157,28 +157,39 @@ class STTBg(Background[STTBgConfig]):
         enable_speaker_diarization = config.enable_speaker_diarization
         diarization_speaker_count = config.diarization_speaker_count
 
-        # TODO: STTProvider 초기화
-        # backend_enum = STTBackend(backend)
-        # self.stt_provider = STTProvider(
-        #     backend=backend_enum,
-        #     ws_url=base_url,
-        #     api_key=api_key,
-        #     credentials_path=credentials_path,
-        #     language=language,
-        #     enable_interim_results=enable_interim_results,
-        #     sample_rate=sample_rate,
-        #     # Google Cloud STT 전용
-        #     model=model,
-        #     use_enhanced=use_enhanced,
-        #     enable_automatic_punctuation=enable_automatic_punctuation,
-        #     enable_speaker_diarization=enable_speaker_diarization,
-        #     diarization_speaker_count=diarization_speaker_count,
-        # )
-        # self.stt_provider.start()
+        # STTProvider 초기화
+        try:
+            backend_enum = STTBackend(backend)
+        except ValueError:
+            logging.warning(
+                "Unknown STT backend '%s'. Defaulting to google_cloud.", backend
+            )
+            backend_enum = STTBackend.GOOGLE_CLOUD
 
-        # TODO: AudioProvider에 콜백 등록
-        # audio_provider = AudioProvider()
-        # audio_provider.register_audio_callback(self.stt_provider.send_audio)
+        self.stt_provider = STTProvider(
+            backend=backend_enum,
+            ws_url=base_url,
+            api_key=api_key,
+            credentials_path=credentials_path,
+            language=language,
+            enable_interim_results=enable_interim_results,
+            sample_rate=sample_rate,
+            # Google Cloud STT 전용
+            model=model,
+            use_enhanced=use_enhanced,
+            enable_automatic_punctuation=enable_automatic_punctuation,
+            enable_speaker_diarization=enable_speaker_diarization,
+            diarization_speaker_count=diarization_speaker_count,
+        )
+        self.stt_provider.start()
+
+        # AudioProvider 큐 소비 연결 (AudioBg에서 stream start 담당)
+        self._audio_provider = AudioProvider()
+        self.stt_provider.attach_audio_provider(self._audio_provider)
+        if not self._audio_provider.running:
+            logging.warning(
+                "AudioProvider is not running. Start AudioBg to capture microphone audio."
+            )
 
         self._last_health_check = time.time()
         self._consecutive_failures = 0
@@ -198,9 +209,7 @@ class STTBg(Background[STTBgConfig]):
         bool
             Provider가 정상이면 True
         """
-        # TODO: 실제 상태 확인 로직
-        # return self.stt_provider.running
-        return True
+        return bool(self.stt_provider.running)
 
     def _reconnect(self) -> bool:
         """
@@ -224,12 +233,9 @@ class STTBg(Background[STTBgConfig]):
             f"({self._reconnect_attempts}/{self.config.max_reconnect_attempts})..."
         )
 
-        # TODO: Provider 재연결
-        # self.stt_provider.stop()
-        # time.sleep(self.config.reconnect_delay_sec)
-        # self.stt_provider.start()
-
+        self.stt_provider.stop()
         time.sleep(self.config.reconnect_delay_sec)
+        self.stt_provider.start()
 
         if self._health_check():
             self._reconnect_attempts = 0
