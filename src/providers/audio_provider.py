@@ -19,8 +19,10 @@ Note:
 """
 
 import logging
+import math
+import queue
 import threading
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from singleton import singleton
 
@@ -64,6 +66,7 @@ class AudioProvider:
     Methods
     -------
     start()
+    start_stream()
         오디오 스트림 시작
     stop()
         오디오 스트림 정지
@@ -145,6 +148,11 @@ class AudioProvider:
         self._is_voice_active: bool = False
         self._lock = threading.Lock()
 
+        self._audio_buffer: "queue.Queue[bytes]"
+        self._buffer_drops = 0
+        self._chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0
+        self.initialize_audio_buffer(buffer_duration_ms=self.buffer_duration_ms)
+
         # AudioInputStream 초기화, provider.on_audio_data 콜백 등록
         self._audio_stream: AudioInputStream = AudioInputStream(
             rate=sample_rate,
@@ -153,6 +161,7 @@ class AudioProvider:
             device_name=device_name,
             audio_data_callback=self._on_audio_data,
         )
+        self._audio_stream.initialize_audio_interface()
         self._vad_engine: Optional[SileroVAD] = None
         self._init_vad_engine()
 
@@ -160,6 +169,22 @@ class AudioProvider:
             f"AudioProvider initialized: rate={sample_rate}, "
             f"chunk={chunk_size}, device={device_id or device_name or 'default'}"
         )
+
+    def initialize_audio_buffer(self, buffer_duration_ms: Optional[int] = None) -> None:
+        """
+        오디오 버퍼를 초기화합니다.
+
+        Parameters
+        ----------
+        buffer_duration_ms : Optional[int]
+            버퍼 길이(ms). None이면 기존 설정 사용
+        """
+        if buffer_duration_ms is not None:
+            self.buffer_duration_ms = buffer_duration_ms
+        self._chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0
+        max_chunks = max(1, int(math.ceil(self.buffer_duration_ms / self._chunk_ms)))
+        self._audio_buffer = queue.Queue(maxsize=max_chunks)
+        self._buffer_drops = 0
 
     def _init_vad_engine(self) -> None:
         if not self.vad_enabled:
@@ -243,6 +268,17 @@ class AudioProvider:
         audio_chunk : bytes
             수신된 오디오 청크
         """
+        # 오디오 버퍼에 저장 (가득 차면 오래된 청크를 버리고 최신 유지)
+        try:
+            self._audio_buffer.put_nowait(audio_chunk)
+        except queue.Full:
+            self._buffer_drops += 1
+            try:
+                _ = self._audio_buffer.get_nowait()
+                self._audio_buffer.put_nowait(audio_chunk)
+            except queue.Empty:
+                pass
+
         # 오디오 레벨 계산
         self._update_audio_level(audio_chunk)
 
@@ -325,6 +361,54 @@ class AudioProvider:
         with self._lock:
             return self._current_audio_level
 
+    def get_buffer_stats(self) -> Dict[str, float]:
+        """
+        오디오 버퍼 상태 반환.
+
+        Returns
+        -------
+        Dict[str, float]
+            큐 크기, 최대 크기, 드롭 수, 추정 지연(ms) 정보
+        """
+        queued = self._audio_buffer.qsize()
+        maxsize = self._audio_buffer.maxsize
+        approx_latency_ms = float(queued) * float(self._chunk_ms)
+        return {
+            "queued_chunks": float(queued),
+            "max_chunks": float(maxsize) if maxsize > 0 else 0.0,
+            "drops": float(self._buffer_drops),
+            "approx_latency_ms": approx_latency_ms,
+        }
+
+    def get_audio_chunk(self, timeout: float = 0.0) -> Optional[bytes]:
+        """
+        오디오 버퍼에서 청크를 가져옵니다.
+
+        Parameters
+        ----------
+        timeout : float
+            큐 대기 시간 (초). 0이면 즉시 반환.
+
+        Returns
+        -------
+        Optional[bytes]
+            오디오 청크, 없으면 None
+        """
+        try:
+            return self._audio_buffer.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def clear_audio_buffer(self) -> None:
+        """
+        오디오 버퍼 비우기.
+        """
+        while True:
+            try:
+                self._audio_buffer.get_nowait()
+            except queue.Empty:
+                break
+
     def is_voice_active(self) -> bool:
         """
         현재 음성 활성 상태 반환.
@@ -341,12 +425,18 @@ class AudioProvider:
         """
         오디오 스트림 시작.
         """
+        self.start_stream()
+
+    def start_stream(self) -> None:
+        """
+        오디오 스트림 시작.
+        """
         if self.running:
             logging.warning("AudioProvider is already running")
             return
 
+        self._audio_stream.start_stream()
         self.running = True
-        self._audio_stream.start()
         logging.info("AudioProvider started")
 
     def stop(self) -> None:
@@ -357,8 +447,8 @@ class AudioProvider:
             logging.warning("AudioProvider is not running")
             return
 
-        self.running = False
         self._audio_stream.stop()
+        self.running = False
         logging.info("AudioProvider stopped")
 
     def configure(
