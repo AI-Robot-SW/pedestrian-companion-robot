@@ -86,36 +86,53 @@ class AudioInputStream:
                 logging.error(f"AudioInputStream callback error: {exc}")
         return (None, pyaudio.paContinue)
 
-    def start(self) -> None:
+    def initialize_audio_interface(self) -> None:
+        if self.remote_input:
+            return
+        if self._pa is None:
+            self._pa = pyaudio.PyAudio()
+            logging.info("AudioInputStream PyAudio interface initialized")
+
+    def start_stream(self) -> None:
         with self._lock:
             if self.running:
                 logging.warning("AudioInputStream already running")
                 return
-            self.running = True
 
         if self.remote_input:
+            with self._lock:
+                self.running = True
             logging.info("AudioInputStream started in remote_input mode")
             return
 
-        if self._pa is None:
-            self._pa = pyaudio.PyAudio()
+        try:
+            self.initialize_audio_interface()
+            device_index = self._resolve_device_index()
+            self._stream = self._pa.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk,
+                input_device_index=device_index,
+                stream_callback=self._on_audio_data,
+            )
+        except Exception:
+            with self._lock:
+                self.running = False
+            raise
 
-        device_index = self._resolve_device_index()
-        self._stream = self._pa.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk,
-            input_device_index=device_index,
-            stream_callback=self._on_audio_data,
-        )
+        with self._lock:
+            self.running = True
         logging.info(
             "AudioInputStream started: rate=%s chunk=%s device=%s",
             self.rate,
             self.chunk,
             device_index if device_index is not None else "default",
         )
+
+    def start(self) -> None:
+        self.start_stream()
 
     def stop(self) -> None:
         with self._lock:
@@ -131,6 +148,20 @@ class AudioInputStream:
             finally:
                 self._stream = None
         logging.info("AudioInputStream stopped")
+
+    def close_audio_interface(self) -> None:
+        if self._stream is not None:
+            try:
+                self._stream.stop_stream()
+                self._stream.close()
+            finally:
+                self._stream = None
+        if self._pa is not None:
+            try:
+                self._pa.terminate()
+            finally:
+                self._pa = None
+        logging.info("AudioInputStream PyAudio interface closed")
 
     def fill_buffer_remote(self, audio_bytes: bytes) -> None:
         """
