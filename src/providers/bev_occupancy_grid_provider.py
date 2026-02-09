@@ -59,7 +59,7 @@ class BEVOccupancyGridProvider:
     Singleton that produces Bird's-Eye-View image and occupancy grid from
     PointCloud using CUDA. Reads PointCloud from PointCloudProvider.data
     (contract: data["pointcloud"] with pc["data"] and pc["point_step"],
-    legacy offsets x 0:4, y 4:8, z 8:12, rgb 16:20).
+    offsets x 0:4, y 4:8, z 8:12, rgb 12:16).
 
     Parameters
     ----------
@@ -251,7 +251,7 @@ class BEVOccupancyGridProvider:
         Parse pointcloud dict to (x, y, z, r, g, b) numpy arrays.
 
         Expects A안 only: pc["data"] (bytes or np.uint8) and pc["point_step"].
-        Uses legacy offsets: x 0:4, y 4:8, z 8:12, rgb 16:20.
+        Uses offsets: x 0:4, y 4:8, z 8:12, rgb 12:16.
 
         Returns
         -------
@@ -280,7 +280,7 @@ class BEVOccupancyGridProvider:
         x = np.frombuffer(cloud_arr[:, 0:4].tobytes(), dtype=np.float32)
         y = np.frombuffer(cloud_arr[:, 4:8].tobytes(), dtype=np.float32)
         z = np.frombuffer(cloud_arr[:, 8:12].tobytes(), dtype=np.float32)
-        rgb_float = np.frombuffer(cloud_arr[:, 16:20].tobytes(), dtype=np.float32)
+        rgb_float = np.frombuffer(cloud_arr[:, 12:16].tobytes(), dtype=np.float32)
         rgb_int = rgb_float.view(np.uint32)
         r = ((rgb_int >> 16) & 0xFF).astype(np.uint8)
         g = ((rgb_int >> 8) & 0xFF).astype(np.uint8)
@@ -348,15 +348,14 @@ class BEVOccupancyGridProvider:
     ) -> Optional[dict]:
         """
         Build occupancy grid from point colors and coordinates.
-        Values: 0=free, 70=avoid, 100=occupied (nav_msgs/OccupancyGrid compatible).
+        Values: 0=free, 70=avoid, 88=person, 100=occupied (nav_msgs/OccupancyGrid compatible).
         """
         try:
             grid_np = np.full((self.height, self.width), 100, dtype=np.int8)
 
             # Color-based masks (vendor logic)
-            mask_obstacle = ((r > 100) & (g < 80) & (b < 80)) | (
-                (b > 100) & (r < 80) & (g < 80)
-            )
+            mask_obstacle = (r > 100) & (g < 80) & (b < 80)
+            mask_person = (b > 100) & (r < 80) & (g < 80)
             mask_free = (g > 100) & (r < 80) & (b < 80)
             mask_avoid = (r > 200) & (g > 200) & (b > 200)
 
@@ -374,6 +373,7 @@ class BEVOccupancyGridProvider:
             )
 
             grid_np[i_grid[mask_obstacle & valid], j_grid[mask_obstacle & valid]] = 100
+            grid_np[i_grid[mask_person & valid], j_grid[mask_person & valid]] = 88
             grid_np[i_grid[mask_avoid & valid], j_grid[mask_avoid & valid]] = 70
             grid_np[i_grid[mask_free & valid], j_grid[mask_free & valid]] = 0
 

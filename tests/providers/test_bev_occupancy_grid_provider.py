@@ -48,14 +48,14 @@ def provider_params():
 
 
 def _make_pointcloud_buffer(n_points: int, point_step: int = 20):
-    """Build raw buffer (A안): x,y,z at 0:4,4:8,8:12, rgb at 16:20 (float32 packed)."""
+    """Build raw buffer (A안): x,y,z at 0:4,4:8,8:12, rgb at 12:16 (float32 packed)."""
     buf = np.zeros((n_points, point_step), dtype=np.uint8)
     for i in range(n_points):
         buf[i, 0:4] = np.frombuffer(np.float32(1.0 + i).tobytes(), dtype=np.uint8)
         buf[i, 4:8] = np.frombuffer(np.float32(2.0).tobytes(), dtype=np.uint8)
         buf[i, 8:12] = np.frombuffer(np.float32(3.0).tobytes(), dtype=np.uint8)
         rgb_int = (255 << 16) | (0 << 8) | 0
-        buf[i, 16:20] = np.frombuffer(
+        buf[i, 12:16] = np.frombuffer(
             np.array([rgb_int], dtype=np.uint32).view(np.float32).tobytes(),
             dtype=np.uint8,
         )
@@ -228,17 +228,18 @@ class TestBEVOccupancyGridProviderBuildOccupancyGrid:
 
     def test_build_occupancy_grid_values_in_range(self, provider_params):
         provider = BEVOccupancyGridProvider(**provider_params)
-        n = 5
-        x = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        n = 6
+        x = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=np.float32)
         y = np.zeros(n, dtype=np.float32)
-        z = np.zeros(n, dtype=np.float32)
-        r = np.array([255, 0, 0, 255, 200], dtype=np.uint8)
-        g = np.array([0, 150, 0, 200, 200], dtype=np.uint8)
-        b = np.array([0, 0, 0, 0, 200], dtype=np.uint8)
+        z = np.full(n, 1.0, dtype=np.float32)
+        r = np.array([255, 0, 0, 255, 200, 0], dtype=np.uint8)
+        g = np.array([0, 150, 0, 200, 200, 0], dtype=np.uint8)
+        b = np.array([0, 0, 0, 0, 200, 255], dtype=np.uint8)
         out = provider._build_occupancy_grid(x, y, z, r, g, b)
         assert out is not None
         data = out["data"]
-        assert np.isin(data, [0, 70, 100]).all()
+        assert np.isin(data, [0, 70, 88, 100]).all()
+        assert 88 in data
 
 
 # --- Error handling ---
