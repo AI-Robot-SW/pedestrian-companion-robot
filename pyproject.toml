@@ -70,12 +70,6 @@ dev = [
     "ruff>=0.9.3",
 ]
 
-[project.optional-dependencies]
-dds = [
-    "cyclonedds==0.10.2"
-]
-macos = ["osascript"]
-
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
