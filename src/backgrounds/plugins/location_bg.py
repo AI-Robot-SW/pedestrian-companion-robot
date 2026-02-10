@@ -29,7 +29,7 @@ class Location(Background[LocationConfig]):
     """
     Location Background.
 
-    Initializes GNSS + UWB providers and the composite LocationProvider.
+    GNSS + UWB Provider들을 초기화하고, 이를 합치는 LocationProvider를 구동.
     """
 
     def __init__(self, config: LocationConfig):
@@ -67,10 +67,9 @@ class Location(Background[LocationConfig]):
 
     def run(self) -> None:
         """
-        Background process tick.
+        Background tick.
 
-        - Optional: periodic health check/log.
-        - Keep it lightweight and sleep to avoid busy-wait.
+        - busy-wait 방지만 수행.
         """
         if self.location_provider is None:
             time.sleep(1.0)
