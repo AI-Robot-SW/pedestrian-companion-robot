@@ -2471,6 +2471,7 @@ dependencies = [
     { name = "pyserial" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
+    { name = "pyubx2" },
     { name = "scipy" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -2545,6 +2546,7 @@ requires-dist = [
     { name = "pyserial" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pyubx2" },
     { name = "scipy" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -2560,6 +2562,17 @@ requires-dist = [
     { name = "websockets", specifier = ">=12.0" },
 ]
 provides-extras = ["dds", "macos", "cuda"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=24.10.0" },
+    { name = "isort", specifier = ">=5.13.2" },
+    { name = "pre-commit", specifier = ">=4.1.0" },
+    { name = "pyright", specifier = ">=1.1.406" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "pytest-asyncio", specifier = ">=0.25.2" },
+    { name = "ruff", specifier = ">=0.9.3" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3527,6 +3540,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyrtcm"
+version = "1.1.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/07/168af19d21ddda4266f0ca1c841ed4e6d5ff9ef9c011e2468e727b82ac1b/pyrtcm-1.1.9.tar.gz", hash = "sha256:5fef7f396b64fb945c7daba105135a49a88b0e824472768b48ad3bbe95b425c3", size = 101879, upload-time = "2025-08-15T06:44:08.908Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/6a/58e3321a50bcdac09c0a7a86cdd5274550866f5be75c51a66bbb4136b5c7/pyrtcm-1.1.9-py3-none-any.whl", hash = "sha256:d0fe3a6fb2716175c583a98b52dac7c287feab8568e6e130162dc0125ae0e630", size = 43818, upload-time = "2025-08-15T06:44:07.49Z" },
+]
+
+[[package]]
 name = "pyserial"
 version = "3.5"
 source = { registry = "https://pypi.org/simple" }
@@ -3636,6 +3658,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3a/31/3c70bf7603cc2dca0f19bdc53b4537a797747a58875b552c8c413d963a3f/pytz-2024.2.tar.gz", hash = "sha256:2aa355083c50a0f93fa581709deac0c9ad65cca8a9e9beac660adcbd493c798a", size = 319692, upload-time = "2024-09-11T02:24:47.91Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/11/c3/005fcca25ce078d2cc29fd559379817424e94885510568bc1bc53d7d5846/pytz-2024.2-py2.py3-none-any.whl", hash = "sha256:31c7c1817eb7fae7ca4b8c7ee50c72f93aa2dd863de768e1ef4245d426aa0725", size = 508002, upload-time = "2024-09-11T02:24:45.8Z" },
+]
+
+[[package]]
+name = "pyubx2"
+version = "1.2.57"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pynmeagps" },
+    { name = "pyrtcm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/8f/49c95ba5528fd64992cc05d7fa5ac3d5157e3f93801b69445e0ecfd72da5/pyubx2-1.2.57.tar.gz", hash = "sha256:d845d7869210eb6dc70f3998500870af3a2209c310780872c282b610a1f7d6af", size = 156710, upload-time = "2025-08-26T06:50:52.502Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/50/23db9c9e538620f1d4641d77bde167771251ef68d6ce290fb59e6e83315d/pyubx2-1.2.57-py3-none-any.whl", hash = "sha256:07027a215ac510a61bda3aba907396fbd82ae8b2530e48267ec4742be86dbbda", size = 75245, upload-time = "2025-08-26T06:50:50.832Z" },
 ]
 
 [[package]]
