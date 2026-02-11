@@ -140,3 +140,47 @@ def test_error_handling_in_run(camera_index):
             provider.stop()
 
     assert not provider.running
+
+
+# @pytest.mark.integration
+def test_realsense_camera_provider_fps_30():
+    TARGET_FPS = 30
+    MIN_FPS = 25          
+    DURATION = 3.0      
+
+    p = RealSenseCameraProvider(width=640, height=480, fps=TARGET_FPS)
+    p.start()
+
+    # 첫 프레임 나올 때까지 대기
+    t_deadline = time.monotonic() + 2.0
+    last_ts = None
+    while time.monotonic() < t_deadline:
+        d = p.data
+        if d is not None:
+            last_ts = d["timestamp"]
+            break
+        time.sleep(0.01)
+
+    if last_ts is None:
+        p.stop()
+        pytest.skip("No frames received (camera not connected or pipeline not running)")
+
+    # FPS 측정
+    t0 = time.monotonic()
+    changes = 0
+    while (time.monotonic() - t0) < DURATION:
+        d = p.data
+        if d is None:
+            time.sleep(0.001)
+            continue
+        ts = d["timestamp"]
+        if ts != last_ts:
+            changes += 1
+            last_ts = ts
+        time.sleep(0.001)
+
+    p.stop()
+
+    measured_fps = changes / DURATION
+    print(f"Measured FPS: {measured_fps:.2f}")
+    assert measured_fps >= MIN_FPS, f"Measured FPS too low: {measured_fps:.1f}"
