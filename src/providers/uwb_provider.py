@@ -1,8 +1,7 @@
-# uwb_provider.py  (single-file version)
+# uwb_provider.py
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from dataclasses import dataclass
@@ -84,7 +83,7 @@ class UwbProvider:
         n = int(getattr(self.ser, "in_waiting", 0) or 0)
         if n > 0:
             return self.ser.read(n)
-        return self.ser.read(1)
+        return b""
 
     @staticmethod
     def _extract_lines(buf: bytearray) -> list[bytes]:
@@ -129,23 +128,12 @@ class UwbProvider:
         )
 
     def _run(self) -> None:
-        try:
-            self._cfg_interface()
-        except Exception:
-            pass
+        self._cfg_interface()
 
         buf = bytearray()
 
         while not self._stop_evt.is_set():
-            try:
-                chunk = self._read_some()
-            except Exception:
-                time.sleep(0.05)
-                continue
-
-            if not chunk:
-                time.sleep(0.01)
-                continue
+            chunk = self._read_some()
 
             buf.extend(chunk)
             for line in self._extract_lines(buf):

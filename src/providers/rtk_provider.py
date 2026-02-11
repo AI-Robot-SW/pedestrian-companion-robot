@@ -1,3 +1,5 @@
+# rtk_provider.py
+
 from __future__ import annotations
 
 import base64
@@ -7,7 +9,7 @@ import threading
 import time
 from typing import Optional, Tuple
 
-from .gnss_provider import GnssProvider, UbxPvtRecord
+from providers.gnss_provider import GnssProvider, UbxPvtRecord
 
 
 def _nmea_checksum(payload: str) -> str:

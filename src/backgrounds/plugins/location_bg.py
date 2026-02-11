@@ -1,78 +1,78 @@
-# src/backgrounds/plugins/location.py
+# location_bg.py
 
 from __future__ import annotations
 
-import logging
 import time
+import serial
+import logging
 from typing import Optional
 
 from pydantic import Field
 
 from backgrounds.base import Background, BackgroundConfig
 from providers.gnss_provider import GnssProvider
+from providers.rtk_provider import RtkProvider
 from providers.uwb_provider import UwbProvider
 from providers.location_provider import LocationProvider
 
 logger = logging.getLogger(__name__)
 
 
-class LocationConfig(BackgroundConfig):
+class LocationBgConfig(BackgroundConfig):
     gnss_port: Optional[str] = Field(default=None, description="GNSS serial port")
     gnss_baud: int = Field(default=115200, description="GNSS baudrate")
 
-    uwb0_port: Optional[str] = Field(default=None, description="UWB0 serial port")
-    uwb1_port: Optional[str] = Field(default=None, description="UWB1 serial port")
+    uwb_port: Optional[str] = Field(default=None, description="UWB serial port")
     uwb_baud: int = Field(default=115200, description="UWB baudrate")
 
+    gnss_meas_rate_ms: int = Field(default=100, description="GNSS measRate (ms)")
 
-class Location(Background[LocationConfig]):
+    rtk_caster: Optional[str] = Field(default="rts2.ngii.go.kr", description="NTRIP caster host")
+    rtk_port: int = Field(default=2101, description="NTRIP caster port")
+    rtk_mountpoint: str = Field(default="VRS-RTCM32", description="NTRIP mountpoint")
+    rtk_user: str = Field(default="", description="NTRIP username")
+    rtk_password: str = Field(default="ngii", description="NTRIP password")
+
+
+class LocationBg(Background[LocationBgConfig]):
     """
-    Location Background.
+    Location Background (RTK-only)
 
-    GNSS + UWB Provider들을 초기화하고, 이를 합치는 LocationProvider를 구동.
+    - GNSS는 무조건 RtkProvider로 실행
+    - run()은 start/유지/stop만 담당
     """
 
-    def __init__(self, config: LocationConfig):
+    def __init__(self, config: LocationBgConfig):
         super().__init__(config)
 
         self.location_provider: Optional[LocationProvider] = None
-        self._last_health_log_t = 0.0
+        self._gnss_ser: Optional[serial.Serial] = None
+        self._uwb_ser: Optional[serial.Serial] = None
 
-        if self.config.gnss_port is None:
-            logger.error("LocationConfig.gnss_port is not specified")
-            return
-        if self.config.uwb0_port is None or self.config.uwb1_port is None:
-            logger.error("LocationConfig.uwb0_port / uwb1_port is not specified")
-            return
+        self._gnss_ser = serial.Serial(self.config.gnss_port, self.config.gnss_baud, timeout=1.0)
+        self._uwb_ser = serial.Serial(self.config.uwb_port, self.config.uwb_baud, timeout=0.2)
 
-        try:
-            gnss = GnssProvider(serial_port=self.config.gnss_port, baudrate=self.config.gnss_baud)
-            uwb0 = UwbProvider(serial_port=self.config.uwb0_port, baudrate=self.config.uwb_baud)
-            uwb1 = UwbProvider(serial_port=self.config.uwb1_port, baudrate=self.config.uwb_baud)
+        gnss = RtkProvider(
+            ser=self._gnss_ser,
+            measRate_ms=self.config.gnss_meas_rate_ms,
+            caster=self.config.rtk_caster,
+            port=self.config.rtk_port,
+            mountpoint=self.config.rtk_mountpoint,
+            user=self.config.rtk_user,
+            password=self.config.rtk_password,
+        )
+        uwb = UwbProvider(ser=self._uwb_ser)
 
-            self.location_provider = LocationProvider(gnss=gnss, uwb0=uwb0, uwb1=uwb1)
+        self.location_provider = LocationProvider(gnss=gnss, uwb=uwb)
 
-            self.location_provider.start()
-
-            logger.info(
-                "Location background initialized providers: gnss=%s uwb0=%s uwb1=%s",
-                self.config.gnss_port,
-                self.config.uwb0_port,
-                self.config.uwb1_port,
-            )
-
-        except Exception as e:
-            logger.exception("Failed to initialize Location background: %s", e)
-            self.location_provider = None
 
     def run(self) -> None:
-        """
-        Background tick.
+        logger.info("Starting LocationProvider")
+        self.location_provider.start()
 
-        - busy-wait 방지만 수행.
-        """
-        if self.location_provider is None:
-            time.sleep(1.0)
-            return
-
-        time.sleep(0.2)
+        try:
+            while True:
+                time.sleep(1.0)
+        finally:
+            logger.info("Stopping LocationProvider")
+            self.location_provider.stop()
