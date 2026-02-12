@@ -54,6 +54,7 @@ def test_background_initialization(config):
     background = SegmentationBg(config=config)
 
     assert background.segmentation_provider is not None
+    background.run()
     assert background.segmentation_provider.running
     background.segmentation_provider.stop()
 
@@ -63,6 +64,7 @@ def test_background_initialization_default(config_default):
     background = SegmentationBg(config=config_default)
 
     assert background.segmentation_provider is not None
+    background.run()
     assert background.segmentation_provider.running
     background.segmentation_provider.stop()
 
@@ -71,6 +73,7 @@ def test_background_name(config):
     """Test that background has correct name."""
     background = SegmentationBg(config=config)
     assert background.name == "SegmentationBg"
+    background.run()
     background.segmentation_provider.stop()
 
 
@@ -79,6 +82,7 @@ def test_background_config_access(config):
     background = SegmentationBg(config=config)
     assert background.config == config
     assert background.config.engine_path == ENGINE_PATH
+    background.run()
     background.segmentation_provider.stop()
 
 
@@ -86,6 +90,7 @@ def test_background_produces_segmentation_output(config_with_camera):
     """Integration test: background produces segmentation output from camera."""
     background = SegmentationBg(config=config_with_camera)
     provider = background.segmentation_provider
+    background.run()
 
     cam = getattr(provider, "cam", None)
     if cam is None or not getattr(cam, "running", False):

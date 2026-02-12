@@ -60,10 +60,16 @@ class SegmentationBg(Background[SegmentationConfig]):
             engine_path=engine_path,
             auto_start_camera=bool(self.config.auto_start_camera),
         )
-
-        # Start Provider
-        self.segmentation_provider.start()
-
         logging.info(
             f"Segmentation Provider initialized in background (engine_path: {engine_path})"
         )
+
+    def run(self) -> None:
+        """
+        Start the SegmentationProvider.
+
+        The provider manages its own internal loop; this method just ensures it is running.
+        """
+        if not self.segmentation_provider.running:
+            self.segmentation_provider.start()
+            logging.info("Segmentation Provider started by background run()")
