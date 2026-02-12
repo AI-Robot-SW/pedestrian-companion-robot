@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -70,6 +71,13 @@ class SegmentationBg(Background[SegmentationConfig]):
 
         The provider manages its own internal loop; this method just ensures it is running.
         """
-        if not self.segmentation_provider.running:
+        if self.segmentation_provider.running:
+            return
+        try:
             self.segmentation_provider.start()
             logging.info("Segmentation Provider started by background run()")
+            while self.segmentation_provider.running:
+                time.sleep(1.0)
+        finally:
+            self.segmentation_provider.stop()
+            logging.info("Segmentation Provider stopped by background run()")

@@ -1,6 +1,7 @@
 import logging
 import time
 from pathlib import Path
+from threading import Thread
 
 import pytest
 
@@ -54,9 +55,12 @@ def test_background_initialization(config):
     background = SegmentationBg(config=config)
 
     assert background.segmentation_provider is not None
-    background.run()
+    t = Thread(target=background.run, daemon=True)
+    t.start()
+    time.sleep(0.1)
     assert background.segmentation_provider.running
     background.segmentation_provider.stop()
+    t.join(timeout=2.0)
 
 
 def test_background_initialization_default(config_default):
@@ -64,17 +68,23 @@ def test_background_initialization_default(config_default):
     background = SegmentationBg(config=config_default)
 
     assert background.segmentation_provider is not None
-    background.run()
+    t = Thread(target=background.run, daemon=True)
+    t.start()
+    time.sleep(0.1)
     assert background.segmentation_provider.running
     background.segmentation_provider.stop()
+    t.join(timeout=2.0)
 
 
 def test_background_name(config):
     """Test that background has correct name."""
     background = SegmentationBg(config=config)
     assert background.name == "SegmentationBg"
-    background.run()
+    t = Thread(target=background.run, daemon=True)
+    t.start()
+    time.sleep(0.1)
     background.segmentation_provider.stop()
+    t.join(timeout=2.0)
 
 
 def test_background_config_access(config):
@@ -82,27 +92,41 @@ def test_background_config_access(config):
     background = SegmentationBg(config=config)
     assert background.config == config
     assert background.config.engine_path == ENGINE_PATH
-    background.run()
+    t = Thread(target=background.run, daemon=True)
+    t.start()
+    time.sleep(0.1)
     background.segmentation_provider.stop()
+    t.join(timeout=2.0)
 
 
 def test_background_produces_segmentation_output(config_with_camera):
     """Integration test: background produces segmentation output from camera."""
     background = SegmentationBg(config=config_with_camera)
     provider = background.segmentation_provider
-    background.run()
+    t = Thread(target=background.run, daemon=True)
+    t.start()
 
     cam = getattr(provider, "cam", None)
-    if cam is None or not getattr(cam, "running", False):
+    if cam is None:
+        provider.stop()
+        t.join(timeout=2.0)
+        pytest.skip("RealSense camera not available")
+
+    cam_start_deadline = time.monotonic() + 3.0
+    while time.monotonic() < cam_start_deadline and not getattr(cam, "running", False):
+        time.sleep(0.05)
+
+    if not getattr(cam, "running", False):
         logging.info(
             "Skip: cam missing or not running. cam=%s running=%s",
             cam,
             getattr(cam, "running", None),
         )
         provider.stop()
+        t.join(timeout=2.0)
         pytest.skip("RealSense camera not running/available")
 
-    deadline = time.monotonic() + 8.0
+    deadline = time.monotonic() + 20.0
     got_output = False
     while time.monotonic() < deadline:
         data = provider.data
@@ -119,6 +143,7 @@ def test_background_produces_segmentation_output(config_with_camera):
         time.sleep(0.01)
 
     provider.stop()
+    t.join(timeout=2.0)
     if not got_output:
         logging.info(
             "Skip: no output. cam.running=%s cam.data=%s",
