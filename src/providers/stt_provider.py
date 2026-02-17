@@ -15,13 +15,8 @@ Dependencies:
 
 Note:
     이 Provider는 Singleton 패턴을 사용합니다.
-    Google Cloud STT Streaming API를 사용하여 실시간 음성 인식을 수행합니다.
-
-Google Cloud STT API:
-    - Streaming Recognition: 실시간 오디오 스트림 처리
-    - 지원 인코딩: LINEAR16 (PCM), FLAC, MULAW, AMR 등
-    - 지원 샘플레이트: 8000Hz ~ 48000Hz
-    - 중간 결과(interim results) 지원
+    Google Cloud STT Streaming API의 5분 제한에 대응하여
+    자동 재연결(while self.running) 루프를 사용합니다.
 
 Environment Variables:
     - GOOGLE_APPLICATION_CREDENTIALS: Google Cloud 서비스 계정 JSON 파일 경로
@@ -33,14 +28,11 @@ import logging
 import os
 import queue
 import threading
+import time
 from enum import Enum
 from typing import Callable, Dict, List, Optional
 
 from .singleton import singleton
-
-from google.cloud import speech
-from google.cloud.speech import RecognitionConfig, StreamingRecognitionConfig
-from om1_speech import LatencyTracker
 
 try:
     from dotenv import load_dotenv
@@ -66,6 +58,39 @@ def _get_env_or_default(env_var: str, default: Optional[str] = None) -> Optional
     """환경 변수에서 값을 가져오거나 기본값 반환."""
     _ensure_env_loaded()
     return os.environ.get(env_var, default)
+
+
+# ---- LatencyTracker (인라인) ----
+
+class LatencyTracker:
+    """오디오 → 인식 결과 지연 측정."""
+
+    def __init__(self, sample_rate: int, channels: int = 1, sample_width_bytes: int = 2):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.sample_width_bytes = sample_width_bytes
+        self.stream_start_ts = None
+        self.samples_sent = 0
+        self.last_audio_end_ts = None
+
+    def on_start(self):
+        self.stream_start_ts = time.perf_counter()
+        self.samples_sent = 0
+        self.last_audio_end_ts = self.stream_start_ts
+
+    def on_send_audio(self, audio_chunk: bytes):
+        if self.stream_start_ts is None:
+            self.on_start()
+        samples = len(audio_chunk) // (self.sample_width_bytes * self.channels)
+        self.samples_sent += samples
+        self.last_audio_end_ts = self.stream_start_ts + (self.samples_sent / self.sample_rate)
+
+    def on_result(self):
+        if self.last_audio_end_ts is None:
+            return None
+        now = time.perf_counter()
+        latency = now - self.last_audio_end_ts
+        return max(0.0, latency)
 
 
 class STTBackend(Enum):
@@ -112,8 +137,8 @@ GOOGLE_CLOUD_STT_DEFAULT_CONFIG = {
     "sample_rate_hertz": 16000,
     "language_code": "ko-KR",
     "enable_automatic_punctuation": True,
-    "model": 'telephony', 
-    "use_enhanced": True, 
+    "model": 'telephony',
+    "use_enhanced": True,
 }
 
 
@@ -125,39 +150,7 @@ class STTProvider:
     오디오 데이터를 Google Cloud STT API로 전송하고, 변환된 텍스트를
     등록된 콜백으로 전달합니다.
 
-    Attributes
-    ----------
-    running : bool
-        Provider 실행 상태
-    backend : STTBackend
-        사용 중인 STT 백엔드
-    language_code : str
-        음성 인식 언어 코드 (BCP-47)
-    enable_interim_results : bool
-        중간 결과 활성화 여부
-
-    Methods
-    -------
-    start()
-        STT 서비스 연결 시작
-    stop()
-        STT 서비스 연결 종료
-    send_audio(audio_chunk)
-        오디오 데이터 전송
-    register_result_callback(callback)
-        STT 결과 콜백 등록
-    register_interim_callback(callback)
-        중간 결과 콜백 등록
-    end_utterance()
-        발화 종료 신호 전송
-
-    Google Cloud STT Features
-    -------------------------
-    - Streaming Recognition: 실시간 스트리밍 음성 인식
-    - Interim Results: 중간 결과 반환
-    - Automatic Punctuation: 자동 구두점 삽입
-    - Enhanced Models: 향상된 음성 인식 모델
-    - Speaker Diarization: 화자 분리 (선택적)
+    gRPC Streaming API의 5분 제한에 대응하여 자동 재연결 루프를 사용합니다.
     """
 
     def __init__(
@@ -179,51 +172,6 @@ class STTProvider:
         single_utterance: bool = False,
         speech_contexts: Optional[List[Dict]] = None,
     ):
-        """
-        STT Provider 초기화.
-
-        Parameters
-        ----------
-        backend : STTBackend
-            STT 백엔드 종류, 기본값 GOOGLE_CLOUD
-        ws_url : Optional[str]
-            WebSocket URL (GOOGLE_WEBSOCKET 백엔드용)
-        api_key : Optional[str]
-            API 키 (WebSocket 백엔드용)
-        credentials_path : Optional[str]
-            Google Cloud 서비스 계정 JSON 파일 경로
-        language : str
-            음성 인식 언어, 기본값 "korean"
-        enable_interim_results : bool
-            중간 결과 활성화 여부, 기본값 True
-        sample_rate : int
-            오디오 샘플링 레이트, 기본값 16000
-        encoding : str
-            오디오 인코딩 형식, 기본값 "LINEAR16"
-
-        Google Cloud STT 전용 Parameters
-        --------------------------------
-        model : str
-            음성 인식 모델
-            - "latest_long": 긴 오디오용 최신 모델
-            - "latest_short": 짧은 오디오용 최신 모델
-            - "phone_call": 전화 통화 최적화
-            - "video": 비디오 오디오 최적화
-            - "default": 기본 모델
-        use_enhanced : bool
-            Enhanced 모델 사용 여부 (더 정확, 비용 증가)
-        enable_automatic_punctuation : bool
-            자동 구두점 삽입 활성화
-        enable_speaker_diarization : bool
-            화자 분리 활성화
-        diarization_speaker_count : int
-            예상 화자 수 (화자 분리 시)
-        single_utterance : bool
-            단일 발화 모드 (발화 종료 시 자동 종료)
-        speech_contexts : Optional[List[Dict]]
-            음성 컨텍스트 힌트 (특정 단어/구문 인식률 향상)
-            예: [{"phrases": ["OpenMind", "KIST"], "boost": 20}]
-        """
         self.running: bool = False
         self.backend = backend
         self.ws_url = ws_url or "wss://api.openmind.org/api/core/google/asr"
@@ -252,8 +200,10 @@ class STTProvider:
         language_lower = language.strip().lower()
         if language_lower not in LANGUAGE_CODE_MAP:
             logging.warning(
-                f"Language '{language}' not supported. "
-                f"Supported: {list(LANGUAGE_CODE_MAP.keys())}. Defaulting to Korean."
+                "Language '%s' not supported. "
+                "Supported: %s. Defaulting to Korean.",
+                language,
+                list(LANGUAGE_CODE_MAP.keys()),
             )
             language_lower = "korean"
         self.language_code = LANGUAGE_CODE_MAP[language_lower]
@@ -267,7 +217,7 @@ class STTProvider:
         self._current_transcript: str = ""
         self._lock = threading.Lock()
 
-        # Google Cloud Speech 클라이언트
+        # Google Cloud Speech 클라이언트 (__init__에서 초기화)
         self._speech_client = None
         self._streaming_config = None
         self._audio_queue: Optional[queue.Queue] = None
@@ -283,117 +233,96 @@ class STTProvider:
         self._audio_consumer_stop_event = threading.Event()
         self._audio_poll_timeout = 0.1
 
-        # Google Cloud Speech 클라이언트는 start()에서 초기화
+        # Google Cloud 클라이언트를 __init__에서 미리 생성
+        if self.backend == STTBackend.GOOGLE_CLOUD:
+            self._init_google_client()
 
         logging.info(
-            f"STTProvider initialized: backend={backend.value}, "
-            f"language={self.language_code}, model={model}, "
-            f"sample_rate={sample_rate}"
+            "STTProvider initialized: backend=%s, language=%s, model=%s, sample_rate=%s",
+            backend.value,
+            self.language_code,
+            model,
+            sample_rate,
         )
 
-    def register_result_callback(self, callback: Callable[[str], None]) -> None:
-        """
-        STT 최종 결과 콜백 등록.
+    # ---- Result / Interim handlers (분리) ----
 
-        Parameters
-        ----------
-        callback : Callable[[str], None]
-            최종 변환 텍스트를 받을 콜백 함수
-        """
+    def _on_result(self, transcript: str) -> None:
+        """최종 인식 결과 처리."""
+        latency = self._lat.on_result()
+        if latency is not None:
+            logging.info("STT latency: %.3f sec", latency)
+        with self._lock:
+            self._current_transcript = transcript
+        for callback in list(self._result_callbacks):
+            try:
+                callback(transcript)
+            except Exception as e:
+                logging.error("STT result callback error: %s", e)
+
+    def _on_interim(self, transcript: str) -> None:
+        """중간 인식 결과 처리."""
+        if not self.enable_interim_results:
+            return
+        for callback in list(self._interim_callbacks):
+            try:
+                callback(transcript)
+            except Exception as e:
+                logging.error("STT interim callback error: %s", e)
+
+    # ---- Callbacks ----
+
+    def register_result_callback(self, callback: Callable[[str], None]) -> None:
+        """STT 최종 결과 콜백 등록."""
         if callback not in self._result_callbacks:
             self._result_callbacks.append(callback)
-            logging.debug(f"STT result callback registered: {callback.__name__}")
+            logging.debug("STT result callback registered: %s", callback.__name__)
 
     def unregister_result_callback(self, callback: Callable[[str], None]) -> None:
-        """
-        STT 최종 결과 콜백 해제.
-
-        Parameters
-        ----------
-        callback : Callable[[str], None]
-            해제할 콜백 함수
-        """
+        """STT 최종 결과 콜백 해제."""
         if callback in self._result_callbacks:
             self._result_callbacks.remove(callback)
-            logging.debug(f"STT result callback unregistered: {callback.__name__}")
+            logging.debug("STT result callback unregistered: %s", callback.__name__)
 
     def register_interim_callback(self, callback: Callable[[str], None]) -> None:
-        """
-        STT 중간 결과 콜백 등록.
-
-        Parameters
-        ----------
-        callback : Callable[[str], None]
-            중간 변환 텍스트를 받을 콜백 함수
-        """
+        """STT 중간 결과 콜백 등록."""
         if callback not in self._interim_callbacks:
             self._interim_callbacks.append(callback)
-            logging.debug(f"STT interim callback registered: {callback.__name__}")
+            logging.debug("STT interim callback registered: %s", callback.__name__)
 
     def unregister_interim_callback(self, callback: Callable[[str], None]) -> None:
-        """
-        STT 중간 결과 콜백 해제.
-
-        Parameters
-        ----------
-        callback : Callable[[str], None]
-            해제할 콜백 함수
-        """
+        """STT 중간 결과 콜백 해제."""
         if callback in self._interim_callbacks:
             self._interim_callbacks.remove(callback)
-            logging.debug(f"STT interim callback unregistered: {callback.__name__}")
+            logging.debug("STT interim callback unregistered: %s", callback.__name__)
+
+    # ---- WebSocket handler ----
 
     def _on_message(self, raw_message: str) -> None:
-        """
-        WebSocket 메시지 수신 핸들러.
-
-        Parameters
-        ----------
-        raw_message : str
-            수신된 JSON 메시지
-        """
+        """WebSocket 메시지 수신 핸들러."""
         try:
             message = json.loads(raw_message)
-
-            # ASR 응답 처리
             if "asr_reply" in message:
                 transcript = message["asr_reply"]
                 is_final = message.get("is_final", True)
-
                 if is_final:
-                    # 최종 결과
-                    latency = self._lat.on_result()
-                    if latency is not None:
-                        logging.info("STT latency: %.3f sec", latency)
-                    self._current_transcript = transcript
-                    for callback in self._result_callbacks:
-                        try:
-                            callback(transcript)
-                        except Exception as e:
-                            logging.error(f"STT result callback error: {e}")
+                    self._on_result(transcript)
                 else:
-                    # 중간 결과
-                    if self.enable_interim_results:
-                        for callback in self._interim_callbacks:
-                            try:
-                                callback(transcript)
-                            except Exception as e:
-                                logging.error(f"STT interim callback error: {e}")
-                
-            # 에러 처리
+                    self._on_interim(transcript)
             elif "error" in message:
-                logging.error(f"STT service error: {message['error']}")
-        
+                logging.error("STT service error: %s", message["error"])
         except json.JSONDecodeError as e:
-            logging.warning(f"Invalid JSON message from STT service: {e}")
+            logging.warning("Invalid JSON message from STT service: %s", e)
         except Exception as e:
-            logging.error(f"Error processing STT message: {e}")
+            logging.error("Error processing STT message: %s", e)
+
+    # ---- Google Cloud STT ----
 
     def _init_google_client(self) -> bool:
         try:
             from google.cloud import speech
         except Exception as e:
-            logging.error(f"google-cloud-speech not available: {e}")
+            logging.error("google-cloud-speech not available: %s", e)
             return False
 
         try:
@@ -409,7 +338,7 @@ class STTProvider:
             else:
                 self._speech_client = speech.SpeechClient()
         except Exception as e:
-            logging.error(f"Failed to init SpeechClient: {e}")
+            logging.error("Failed to init SpeechClient: %s", e)
             return False
 
         try:
@@ -489,7 +418,8 @@ class STTProvider:
                     )
             yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-    def _handle_google_response(self, response) -> None:
+    def _process_response(self, response) -> None:
+        """Google Cloud STT 응답 처리 — _on_result / _on_interim으로 분배."""
         if not getattr(response, "results", None):
             return
         for result in response.results:
@@ -497,57 +427,61 @@ class STTProvider:
                 continue
             transcript = result.alternatives[0].transcript
             if result.is_final:
-                latency = self._lat.on_result()
-                if latency is not None:
-                    logging.info("STT latency: %.3f sec", latency)
-                self._current_transcript = transcript
-                for callback in self._result_callbacks:
-                    try:
-                        callback(transcript)
-                    except Exception as e:
-                        logging.error(f"STT result callback error: {e}")
+                self._on_result(transcript)
             else:
-                if self.enable_interim_results:
-                    for callback in self._interim_callbacks:
-                        try:
-                            callback(transcript)
-                        except Exception as e:
-                            logging.error(f"STT interim callback error: {e}")
+                self._on_interim(transcript)
 
     def _google_streaming_worker(self) -> None:
-        if self._speech_client is None:
-            return
-        try:
-            logging.info("Google streaming worker started")
-            requests = self._google_request_generator()
-            if requests is None:
-                return
-            responses = self._speech_client.streaming_recognize(
-                config=self._streaming_config,
-                requests=requests,
-            )
-            for response in responses:
+        """Streaming worker with auto-reconnect for 5-min gRPC limit."""
+        while self.running and not self._stream_stop_event.is_set():
+            try:
+                if self._speech_client is None:
+                    if not self._init_google_client():
+                        logging.error("Google Cloud client init failed, stopping worker")
+                        break
+
+                logging.info("Google streaming session started")
+                self._audio_consumed = 0
+                requests = self._google_request_generator()
+                if requests is None:
+                    break
+                responses = self._speech_client.streaming_recognize(
+                    config=self._streaming_config,
+                    requests=requests,
+                )
+                for response in responses:
+                    if self._stream_stop_event.is_set():
+                        return
+                    self._process_response(response)
+            except Exception as e:
                 if self._stream_stop_event.is_set():
                     break
-                self._handle_google_response(response)
-        except Exception as e:
-            logging.error(f"Google streaming error: {e}")
-        finally:
-            logging.info("Google streaming worker stopped")
+                logging.warning(
+                    "Google streaming disconnected: %s. Reconnecting in 1s...", e
+                )
+                time.sleep(1.0)
+        logging.info("Google streaming worker stopped")
+
+    # ---- AudioProvider 큐 소비 ----
 
     def _audio_consumer_loop(self) -> None:
         while not self._audio_consumer_stop_event.is_set():
-            if not self.running or self._audio_provider is None:
-                self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
-                continue
-            if not self._audio_provider.running:
-                self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
-                continue
-            chunk = self._audio_provider.get_audio_chunk(
-                timeout=self._audio_poll_timeout
-            )
-            if chunk:
-                self.send_audio(chunk)
+            try:
+                if not self.running or self._audio_provider is None:
+                    self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
+                    continue
+                if not self._audio_provider.running:
+                    self._audio_consumer_stop_event.wait(timeout=self._audio_poll_timeout)
+                    continue
+                chunk = self._audio_provider.get_audio_chunk(
+                    timeout=self._audio_poll_timeout
+                )
+                if chunk:
+                    self.send_audio(chunk)
+            except Exception as e:
+                if self._audio_consumer_stop_event.is_set():
+                    break
+                logging.error("Audio consumer error: %s", e)
 
     def _start_audio_consumer(self) -> None:
         if self._audio_consumer_thread and self._audio_consumer_thread.is_alive():
@@ -566,30 +500,16 @@ class STTProvider:
     def attach_audio_provider(
         self, audio_provider: "AudioProvider", poll_timeout: float = 0.1
     ) -> None:
-        """
-        AudioProvider 큐를 소비하도록 연결.
-
-        Parameters
-        ----------
-        audio_provider : AudioProvider
-            오디오 데이터 큐를 제공하는 AudioProvider
-        poll_timeout : float
-            큐 대기 시간 (초)
-        """
+        """AudioProvider 큐를 소비하도록 연결."""
         self._audio_provider = audio_provider
         self._audio_poll_timeout = max(0.01, poll_timeout)
         if self.running:
             self._start_audio_consumer()
 
-    def send_audio(self, audio_chunk: bytes) -> None:
-        """
-        오디오 데이터를 ASR 서비스로 전송.
+    # ---- Audio send ----
 
-        Parameters
-        ----------
-        audio_chunk : bytes
-            전송할 오디오 청크
-        """
+    def send_audio(self, audio_chunk: bytes) -> None:
+        """오디오 데이터를 ASR 서비스로 전송."""
         if not self.running:
             logging.warning("STTProvider is not running. Call start() first.")
             return
@@ -612,15 +532,10 @@ class STTProvider:
             return
 
         # TODO: WebSocket으로 오디오 전송
-        # self._ws_client.send_message(audio_chunk)
         self._lat.on_send_audio(audio_chunk)
 
     def end_utterance(self) -> None:
-        """
-        발화 종료 신호 전송.
-
-        현재 발화가 끝났음을 ASR 서비스에 알립니다.
-        """
+        """발화 종료 신호 전송."""
         if not self.running:
             return
 
@@ -630,39 +545,24 @@ class STTProvider:
                     self._audio_queue.put_nowait(None)
                 except queue.Full:
                     logging.warning("STTProvider audio queue full; end_utterance skipped")
-        # TODO: 발화 종료 메시지 전송 (WebSocket)
-        # end_message = json.dumps({"action": "end_utterance"})
-        # self._ws_client.send_message(end_message)
         logging.debug("End utterance signal sent")
 
-    def get_current_transcript(self) -> str:
-        """
-        현재 변환된 텍스트 반환.
+    # ---- Query ----
 
-        Returns
-        -------
-        str
-            현재까지 변환된 텍스트
-        """
+    def get_current_transcript(self) -> str:
+        """현재 변환된 텍스트 반환."""
         with self._lock:
             return self._current_transcript
 
     def is_listening(self) -> bool:
-        """
-        현재 청취 상태 반환.
-
-        Returns
-        -------
-        bool
-            청취 중이면 True
-        """
+        """현재 청취 상태 반환."""
         with self._lock:
             return self._is_listening
 
+    # ---- Lifecycle ----
+
     def start(self) -> None:
-        """
-        STT 서비스 연결 시작.
-        """
+        """STT 서비스 연결 시작."""
         if self.running:
             logging.warning("STTProvider is already running")
             return
@@ -671,10 +571,11 @@ class STTProvider:
         self._is_listening = True
 
         if self.backend == STTBackend.GOOGLE_CLOUD:
-            if not self._init_google_client():
-                self.running = False
-                self._is_listening = False
-                return
+            if self._speech_client is None:
+                if not self._init_google_client():
+                    self.running = False
+                    self._is_listening = False
+                    return
             self._stream_stop_event.clear()
             self._audio_queue = queue.Queue(maxsize=200)
             self._streaming_thread = threading.Thread(
@@ -687,28 +588,16 @@ class STTProvider:
             )
         else:
             # TODO: WebSocket 연결 시작
-            # self._ws_client.start()
             pass
-        self._lat.on_start()
-        # 초기 설정 메시지 전송
-        # config_message = json.dumps({
-        #     "config": {
-        #         "language_code": self.language_code,
-        #         "sample_rate": self.sample_rate,
-        #         "encoding": self.encoding,
-        #         "interim_results": self.enable_interim_results,
-        #     }
-        # })
-        # self._ws_client.send_message(config_message)
 
-        logging.info(f"STTProvider started with language={self.language_code}")
+        self._lat.on_start()
+        logging.info("STTProvider started with language=%s", self.language_code)
+
         if self._audio_provider is not None:
             self._start_audio_consumer()
 
     def stop(self) -> None:
-        """
-        STT 서비스 연결 종료.
-        """
+        """STT 서비스 연결 종료."""
         if not self.running:
             logging.warning("STTProvider is not running")
             return
@@ -718,16 +607,16 @@ class STTProvider:
 
         if self.backend == STTBackend.GOOGLE_CLOUD:
             self._stream_stop_event.set()
+            # Poison pill to unblock the request generator
             if self._audio_queue is not None:
                 try:
                     self._audio_queue.put_nowait(None)
                 except queue.Full:
                     pass
             if self._streaming_thread is not None:
-                self._streaming_thread.join(timeout=2.0)
+                self._streaming_thread.join(timeout=5.0)
         else:
             # TODO: WebSocket 연결 종료
-            # self._ws_client.stop()
             pass
 
         self._stop_audio_consumer()
@@ -747,35 +636,7 @@ class STTProvider:
         single_utterance: Optional[bool] = None,
         speech_contexts: Optional[List[Dict]] = None,
     ) -> None:
-        """
-        Provider 설정 변경.
-
-        Parameters
-        ----------
-        language : Optional[str]
-            새 언어 설정
-        enable_interim_results : Optional[bool]
-            중간 결과 활성화 여부
-        sample_rate : Optional[int]
-            새 샘플링 레이트
-
-        Google Cloud STT 전용 Parameters
-        --------------------------------
-        model : Optional[str]
-            음성 인식 모델
-        use_enhanced : Optional[bool]
-            Enhanced 모델 사용 여부
-        enable_automatic_punctuation : Optional[bool]
-            자동 구두점 삽입 활성화
-        enable_speaker_diarization : Optional[bool]
-            화자 분리 활성화
-        diarization_speaker_count : Optional[int]
-            예상 화자 수
-        single_utterance : Optional[bool]
-            단일 발화 모드
-        speech_contexts : Optional[List[Dict]]
-            음성 컨텍스트 힌트
-        """
+        """Provider 설정 변경."""
         restart_needed = False
 
         if language is not None:
@@ -829,14 +690,7 @@ class STTProvider:
             logging.info("STTProvider reconfigured and restarted")
 
     def get_recognition_config(self) -> Dict:
-        """
-        현재 Google Cloud STT 설정 반환.
-
-        Returns
-        -------
-        Dict
-            현재 설정 딕셔너리
-        """
+        """현재 Google Cloud STT 설정 반환."""
         return {
             "backend": self.backend.value,
             "language_code": self.language_code,
