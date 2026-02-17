@@ -10,8 +10,8 @@ Architecture:
               STTProvider (오디오 데이터 전달)
 
 Dependencies:
-    - om1_speech (AudioInputStream): 오디오 스트림 처리
-    - STTProvider: 음성-텍스트 변환
+    - pyaudio: 오디오 스트림 처리
+    - SileroVAD (vad.py): 음성 활동 감지
 
 Note:
     이 Provider는 Singleton 패턴을 사용하여 시스템 전체에서
@@ -21,13 +21,14 @@ Note:
 import logging
 import math
 import queue
+import struct
 import threading
 from typing import Callable, Dict, List, Optional
 
-from singleton import singleton
+import pyaudio
 
-# /home/nvidia/pedestrian-companion-robot/src/om1_speech.py 경로에 파일모듈로 존재
-from om1_speech import AudioInputStream, SileroVAD
+from .singleton import singleton
+from .vad import SileroVAD
 
 
 @singleton
@@ -52,32 +53,10 @@ class AudioProvider:
         마이크 디바이스 ID
     device_name : Optional[str]
         마이크 디바이스 이름
+    remote_input : bool
+        원격 오디오 입력 모드
     vad_enabled : bool
         VAD 활성화 여부
-    vad_threshold : float
-        VAD 임계값
-    vad_min_silence_duration_ms : int
-        VAD 최소 무음 길이 (ms)
-    vad_speech_pad_ms : int
-        VAD 양쪽 패딩 (ms)
-    vad_min_speech_duration_ms : int
-        VAD 최소 발화 길이 (ms)
-
-    Methods
-    -------
-    start()
-    start_stream()
-        오디오 스트림 시작
-    stop()
-        오디오 스트림 정지
-    register_audio_callback(callback)
-        오디오 데이터 콜백 등록
-    register_vad_callback(callback)
-        VAD 이벤트 콜백 등록
-    get_audio_level() -> float
-        현재 오디오 레벨 반환
-    is_voice_active() -> bool
-        현재 음성 활성 상태 반환
     """
 
     def __init__(
@@ -87,6 +66,7 @@ class AudioProvider:
         channels: int = 1,
         device_id: Optional[int] = None,
         device_name: Optional[str] = None,
+        remote_input: bool = False,
         vad_enabled: bool = True,
         vad_threshold: float = 0.5,
         vad_min_silence_duration_ms: int = 100,
@@ -95,42 +75,13 @@ class AudioProvider:
         vad_device: str = "cpu",
         buffer_duration_ms: int = 200,
     ):
-        """
-        Audio Provider 초기화.
-
-        Parameters
-        ----------
-        sample_rate : int
-            오디오 샘플링 레이트 (Hz), 기본값 16000
-        chunk_size : int
-            오디오 청크 크기 (samples), 기본값 1024
-        channels : int
-            오디오 채널 수, 기본값 1 (mono)
-        device_id : Optional[int]
-            마이크 디바이스 ID, None이면 시스템 기본값
-        device_name : Optional[str]
-            마이크 디바이스 이름
-        vad_enabled : bool
-            VAD 활성화 여부, 기본값 True
-        vad_threshold : float
-            VAD 임계값 (0.0 ~ 1.0), 기본값 0.5
-        vad_min_silence_duration_ms : int
-            VAD 최소 무음 길이 (ms), 기본값 100
-        vad_speech_pad_ms : int
-            VAD 양쪽 패딩 (ms), 기본값 30
-        vad_min_speech_duration_ms : int
-            VAD 최소 발화 길이 (ms), 기본값 250
-        vad_device : str
-            VAD 디바이스 ("cpu" 또는 "cuda")
-        buffer_duration_ms : int
-            오디오 버퍼 지속 시간 (ms), 기본값 200
-        """
         self.running: bool = False
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
         self.channels = channels
         self.device_id = device_id
         self.device_name = device_name
+        self.remote_input = remote_input
         self.vad_enabled = vad_enabled
         self.vad_threshold = vad_threshold
         self.vad_min_silence_duration_ms = vad_min_silence_duration_ms
@@ -148,26 +99,26 @@ class AudioProvider:
         self._is_voice_active: bool = False
         self._lock = threading.Lock()
 
+        # 오디오 버퍼 (queue 기반)
         self._audio_buffer: "queue.Queue[bytes]"
         self._buffer_drops = 0
         self._chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0
         self.initialize_audio_buffer(buffer_duration_ms=self.buffer_duration_ms)
 
-        # AudioInputStream 초기화, provider.on_audio_data 콜백 등록
-        self._audio_stream: AudioInputStream = AudioInputStream(
-            rate=sample_rate,
-            chunk=chunk_size,
-            device=device_id,
-            device_name=device_name,
-            audio_data_callback=self._on_audio_data,
-        )
-        self._audio_stream.initialize_audio_interface()
+        # PyAudio (lazy init in start_stream)
+        self._pa: Optional[pyaudio.PyAudio] = None
+        self._stream: Optional[pyaudio.Stream] = None
+
+        # VAD 엔진
         self._vad_engine: Optional[SileroVAD] = None
         self._init_vad_engine()
 
         logging.info(
-            f"AudioProvider initialized: rate={sample_rate}, "
-            f"chunk={chunk_size}, device={device_id or device_name or 'default'}"
+            "AudioProvider initialized: rate=%s, chunk=%s, device=%s, remote_input=%s",
+            sample_rate,
+            chunk_size,
+            device_id or device_name or "default",
+            remote_input,
         )
 
     def initialize_audio_buffer(self, buffer_duration_ms: Optional[int] = None) -> None:
@@ -201,114 +152,88 @@ class AudioProvider:
                 device=self.vad_device,
             )
         except Exception as e:
-            logging.error(f"SileroVAD init failed: {e}")
+            logging.error("SileroVAD init failed: %s", e)
             self._vad_engine = None
             self.vad_enabled = False
 
-    def register_audio_callback(self, callback: Callable[..., None]) -> None:
-        """
-        오디오 데이터 콜백 등록.
+    # ---- Device resolution ----
 
-        Parameters
-        ----------
-        callback : Callable[[bytes], None]
-            오디오 청크를 받을 콜백 함수
-        """
+    def _resolve_device_index(self) -> Optional[int]:
+        """device_id 또는 device_name으로 PyAudio 입력 디바이스 검색."""
+        if self.device_id is not None:
+            return self.device_id
+        if not self.device_name or self._pa is None:
+            return None
+        name_l = self.device_name.lower()
+        for idx in range(self._pa.get_device_count()):
+            info = self._pa.get_device_info_by_index(idx)
+            dev_name = str(info.get("name", "")).lower()
+            if name_l in dev_name and int(info.get("maxInputChannels", 0)) > 0:
+                return idx
+        logging.warning("AudioProvider device_name not found: %s", self.device_name)
+        return None
+
+    # ---- Callbacks ----
+
+    def register_audio_callback(self, callback: Callable[..., None]) -> None:
+        """오디오 데이터 콜백 등록."""
         if callback not in self._audio_callbacks:
             self._audio_callbacks.append(callback)
-            logging.debug(f"Audio callback registered: {callback.__name__}")
+            logging.debug("Audio callback registered: %s", getattr(callback, '__name__', repr(callback)))
 
     def unregister_audio_callback(self, callback: Callable[..., None]) -> None:
-        """
-        오디오 데이터 콜백 해제.
-
-        Parameters
-        ----------
-        callback : Callable[[bytes], None]
-            해제할 콜백 함수
-        """
+        """오디오 데이터 콜백 해제."""
         if callback in self._audio_callbacks:
             self._audio_callbacks.remove(callback)
-            logging.debug(f"Audio callback unregistered: {callback.__name__}")
+            logging.debug("Audio callback unregistered: %s", getattr(callback, '__name__', repr(callback)))
 
     def register_vad_callback(self, callback: Callable[[bool], None]) -> None:
-        """
-        VAD 이벤트 콜백 등록.
-
-        Parameters
-        ----------
-        callback : Callable[[bool], None]
-            음성 활성 상태 변경 시 호출될 콜백 (True: 음성 시작, False: 음성 종료)
-        """
+        """VAD 이벤트 콜백 등록."""
         if callback not in self._vad_callbacks:
             self._vad_callbacks.append(callback)
-            logging.debug(f"VAD callback registered: {callback.__name__}")
+            logging.debug("VAD callback registered: %s", getattr(callback, '__name__', repr(callback)))
 
     def unregister_vad_callback(self, callback: Callable[[bool], None]) -> None:
-        """
-        VAD 이벤트 콜백 해제.
-
-        Parameters
-        ----------
-        callback : Callable[[bool], None]
-            해제할 콜백 함수
-        """
+        """VAD 이벤트 콜백 해제."""
         if callback in self._vad_callbacks:
             self._vad_callbacks.remove(callback)
-            logging.debug(f"VAD callback unregistered: {callback.__name__}")
+            logging.debug("VAD callback unregistered: %s", getattr(callback, '__name__', repr(callback)))
 
-    def _on_audio_data(
-        self, audio_chunk: bytes, frame_count: int, time_info: dict, status_flags: int
-    ) -> None:
-        """
-        오디오 데이터 수신 내부 핸들러.
+    # ---- Audio data handling ----
 
-        Parameters
-        ----------
-        audio_chunk : bytes
-            수신된 오디오 청크
-        """
+    def _fill_buffer(self, in_data, frame_count, time_info, status_flags):
+        """PyAudio stream callback — 오디오 저장 및 처리."""
         # 오디오 버퍼에 저장 (가득 차면 오래된 청크를 버리고 최신 유지)
         try:
-            self._audio_buffer.put_nowait(audio_chunk)
+            self._audio_buffer.put_nowait(in_data)
         except queue.Full:
             self._buffer_drops += 1
             try:
                 _ = self._audio_buffer.get_nowait()
-                self._audio_buffer.put_nowait(audio_chunk)
+                self._audio_buffer.put_nowait(in_data)
             except queue.Empty:
                 pass
 
         # 오디오 레벨 계산
-        self._update_audio_level(audio_chunk)
+        self._update_audio_level(in_data)
 
         # VAD 처리
         if self.vad_enabled:
-            self._process_vad(audio_chunk)
+            self._process_vad(in_data)
 
         # 등록된 콜백 호출
-        for callback in self._audio_callbacks:
+        for callback in list(self._audio_callbacks):
             try:
-                callback(audio_chunk, frame_count, time_info, status_flags)
+                callback(in_data, frame_count, time_info, status_flags)
             except Exception as e:
-                logging.error(f"Audio callback error: {e}")
+                logging.error("Audio callback error: %s", e)
+
+        return (None, pyaudio.paContinue)
 
     def _update_audio_level(self, audio_chunk: bytes) -> None:
-        """
-        오디오 레벨 업데이트.
-
-        Parameters
-        ----------
-        audio_chunk : bytes
-            오디오 청크
-        """
         if not audio_chunk:
             return
-        # PCM 16-bit signed little-endian RMS -> 0~1 사이의 값으로 정규화 (디버깅용)
         try:
-            import math
-            import struct
-
             sample_count = len(audio_chunk) // 2
             if sample_count == 0:
                 return
@@ -318,24 +243,16 @@ class AudioProvider:
             with self._lock:
                 self._current_audio_level = level
         except Exception as e:
-            logging.error(f"Audio level update failed: {e}")
+            logging.error("Audio level update failed: %s", e)
 
     def _process_vad(self, audio_chunk: bytes) -> None:
-        """
-        VAD 처리.
-
-        Parameters
-        ----------
-        audio_chunk : bytes
-            오디오 청크
-        """
         if not self.vad_enabled or self._vad_engine is None:
             return
         try:
             self._vad_engine.process(audio_chunk)
             is_voice = self._vad_engine.speech_active
         except Exception as e:
-            logging.error(f"VAD processing error: {e}")
+            logging.error("VAD processing error: %s", e)
             return
 
         with self._lock:
@@ -347,29 +264,22 @@ class AudioProvider:
                 try:
                     callback(is_voice)
                 except Exception as e:
-                    logging.error(f"VAD callback error: {e}")
+                    logging.error("VAD callback error: %s", e)
+
+    # ---- Query methods ----
 
     def get_audio_level(self) -> float:
-        """
-        현재 오디오 레벨 반환.
-
-        Returns
-        -------
-        float
-            현재 오디오 레벨 (0.0 ~ 1.0)
-        """
+        """현재 오디오 레벨 반환 (0.0 ~ 1.0)."""
         with self._lock:
             return self._current_audio_level
 
-    def get_buffer_stats(self) -> Dict[str, float]:
-        """
-        오디오 버퍼 상태 반환.
+    def is_voice_active(self) -> bool:
+        """현재 음성 활성 상태 반환."""
+        with self._lock:
+            return self._is_voice_active
 
-        Returns
-        -------
-        Dict[str, float]
-            큐 크기, 최대 크기, 드롭 수, 추정 지연(ms) 정보
-        """
+    def get_buffer_stats(self) -> Dict[str, float]:
+        """오디오 버퍼 상태 반환."""
         queued = self._audio_buffer.qsize()
         maxsize = self._audio_buffer.maxsize
         approx_latency_ms = float(queued) * float(self._chunk_ms)
@@ -381,75 +291,91 @@ class AudioProvider:
         }
 
     def get_audio_chunk(self, timeout: float = 0.0) -> Optional[bytes]:
-        """
-        오디오 버퍼에서 청크를 가져옵니다.
-
-        Parameters
-        ----------
-        timeout : float
-            큐 대기 시간 (초). 0이면 즉시 반환.
-
-        Returns
-        -------
-        Optional[bytes]
-            오디오 청크, 없으면 None
-        """
+        """오디오 버퍼에서 청크를 가져옵니다."""
         try:
             return self._audio_buffer.get(timeout=timeout)
         except queue.Empty:
             return None
 
     def clear_audio_buffer(self) -> None:
-        """
-        오디오 버퍼 비우기.
-        """
+        """오디오 버퍼 비우기."""
         while True:
             try:
                 self._audio_buffer.get_nowait()
             except queue.Empty:
                 break
 
-    def is_voice_active(self) -> bool:
-        """
-        현재 음성 활성 상태 반환.
-
-        Returns
-        -------
-        bool
-            음성이 감지되면 True
-        """
-        with self._lock:
-            return self._is_voice_active
+    # ---- Lifecycle ----
 
     def start(self) -> None:
-        """
-        오디오 스트림 시작.
-        """
+        """오디오 스트림 시작."""
         self.start_stream()
 
     def start_stream(self) -> None:
-        """
-        오디오 스트림 시작.
-        """
+        """오디오 스트림 시작."""
         if self.running:
             logging.warning("AudioProvider is already running")
             return
 
-        self._audio_stream.start_stream()
+        if self.remote_input:
+            self.running = True
+            logging.info("AudioProvider started in remote_input mode")
+            return
+
+        self._pa = pyaudio.PyAudio()
+        device_index = self._resolve_device_index()
+        try:
+            self._stream = self._pa.open(
+                format=pyaudio.paInt16,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                frames_per_buffer=self.chunk_size,
+                input_device_index=device_index,
+                stream_callback=self._fill_buffer,
+            )
+        except Exception:
+            if self._pa is not None:
+                self._pa.terminate()
+                self._pa = None
+            raise
+
         self.running = True
-        logging.info("AudioProvider started")
+        logging.info(
+            "AudioProvider started: rate=%s chunk=%s device=%s",
+            self.sample_rate,
+            self.chunk_size,
+            device_index if device_index is not None else "default",
+        )
 
     def stop(self) -> None:
-        """
-        오디오 스트림 정지.
-        """
+        """오디오 스트림 정지."""
         if not self.running:
             logging.warning("AudioProvider is not running")
             return
 
-        self._audio_stream.stop()
         self.running = False
+
+        if self._stream is not None:
+            try:
+                self._stream.stop_stream()
+                self._stream.close()
+            finally:
+                self._stream = None
+
+        if self._pa is not None:
+            try:
+                self._pa.terminate()
+            finally:
+                self._pa = None
+
         logging.info("AudioProvider stopped")
+
+    def fill_buffer_remote(self, audio_bytes: bytes) -> None:
+        """원격 오디오 데이터 입력 (remote_input 모드 전용)."""
+        if not self.remote_input:
+            return
+        self._fill_buffer(audio_bytes, len(audio_bytes), {}, 0)
 
     def configure(
         self,
@@ -464,34 +390,7 @@ class AudioProvider:
         vad_min_speech_duration_ms: Optional[int] = None,
         vad_device: Optional[str] = None,
     ) -> None:
-        """
-        Provider 설정 변경.
-
-        변경된 설정이 있으면 스트림을 재시작합니다.
-
-        Parameters
-        ----------
-        sample_rate : Optional[int]
-            새 샘플링 레이트
-        chunk_size : Optional[int]
-            새 청크 크기
-        device_id : Optional[int]
-            새 디바이스 ID
-        device_name : Optional[str]
-            새 디바이스 이름
-        vad_enabled : Optional[bool]
-            VAD 활성화 여부
-        vad_threshold : Optional[float]
-            새 VAD 임계값
-        vad_min_silence_duration_ms : Optional[int]
-            새 VAD 최소 무음 길이 (ms)
-        vad_speech_pad_ms : Optional[int]
-            새 VAD 양쪽 패딩 (ms)
-        vad_min_speech_duration_ms : Optional[int]
-            새 VAD 최소 발화 길이 (ms)
-        vad_device : Optional[str]
-            새 VAD 디바이스
-        """
+        """Provider 설정 변경. 변경된 설정이 있으면 스트림을 재시작합니다."""
         restart_needed = False
         vad_reinit_needed = False
 
@@ -553,6 +452,5 @@ class AudioProvider:
 
         if restart_needed and self.running:
             self.stop()
-            # TODO: 새 설정으로 AudioInputStream 재생성
             self.start()
             logging.info("AudioProvider reconfigured and restarted")
