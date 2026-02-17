@@ -21,7 +21,8 @@ def singleton(cls):
     Args:
         cls: The class to be converted into a singleton.
 
-    Returns:
+    Returns
+    -------
         function: A getter function that returns the singleton instance.
     """
     if not hasattr(cls, "_singleton_instance"):
@@ -39,7 +40,8 @@ def singleton(cls):
             *args: Positional arguments to pass to the class constructor.
             **kwargs: Keyword arguments to pass to the class constructor.
 
-        Returns:
+        Returns
+        -------
             Any: The singleton instance of the decorated class.
         """
         with lock:

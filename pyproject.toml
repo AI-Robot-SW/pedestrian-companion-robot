@@ -19,6 +19,8 @@ dependencies = [
     "eclipse-zenoh>=1.4.0",
     "audiosegment",
     "pyaudio",
+    "requests",
+    "google-auth>=2.0.0",
     "openai>=1.59.5",
     "pillow>=11.1.0",
     "python-dotenv>=1.0.1",
@@ -54,6 +56,7 @@ dds = [
     "cyclonedds==0.10.2"
 ]
 macos = ["osascript"]
+grpc = ["google-cloud-speech>=2.21.0"]
 
 [dependency-groups]
 dev = [
@@ -73,6 +76,7 @@ addopts = "-m \"not integration\""
 norecursedirs = ["src/unitree", "system_hw_test", "src/ubtech"]
 markers = [
     "integration: marks tests as integration tests",
+    "live: marks tests that require a live LLM server (Ollama/vLLM)",
 ]
 
 [tool.black]
