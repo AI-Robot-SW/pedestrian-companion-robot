@@ -1,11 +1,3 @@
-"""
-Singleton Decorator - Thread-safe singleton pattern implementation.
-
-이 모듈은 스레드 안전한 싱글톤 패턴을 제공합니다.
-Provider 클래스들에서 시스템 전체에서 하나의 인스턴스만
-유지하도록 보장합니다.
-"""
-
 import threading
 from typing import Any
 
@@ -21,8 +13,7 @@ def singleton(cls):
     Args:
         cls: The class to be converted into a singleton.
 
-    Returns
-    -------
+    Returns:
         function: A getter function that returns the singleton instance.
     """
     if not hasattr(cls, "_singleton_instance"):
@@ -40,8 +31,7 @@ def singleton(cls):
             *args: Positional arguments to pass to the class constructor.
             **kwargs: Keyword arguments to pass to the class constructor.
 
-        Returns
-        -------
+        Returns:
             Any: The singleton instance of the decorated class.
         """
         with lock:
