@@ -368,10 +368,12 @@ class SpeakerProvider:
                 # 큐에서 오디오 데이터 가져오기 (1초 타임아웃)
                 audio_data = self._audio_queue.get(timeout=1.0)
 
-                if self._should_stop:
+                # 새 오디오에 대해 stop 플래그 리셋
+                # (_should_stop은 현재 재생 중 청크 중단용이며,
+                #  clear_queue()가 이미 이전 오디오를 제거했으므로
+                #  여기 도달한 오디오는 stop 이후 새로 큐잉된 것)
+                with self._lock:
                     self._should_stop = False
-                    self._audio_queue.task_done()
-                    continue
 
                 # 재생 시작 알림
                 with self._lock:

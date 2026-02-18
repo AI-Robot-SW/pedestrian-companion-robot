@@ -17,6 +17,7 @@ mock_pyaudio.paInt16 = 8  # PyAudio constant
 sys.modules["pyaudio"] = mock_pyaudio
 
 from providers.speaker_provider import SpeakerProvider
+from providers.stt_provider import STTProvider
 from providers.tts_provider import TTSBackend, TTSProvider
 
 
@@ -36,9 +37,11 @@ def reset_singletons():
     """Reset singleton instances between tests."""
     TTSProvider.reset()  # type: ignore
     SpeakerProvider.reset()  # type: ignore
+    STTProvider.reset()  # type: ignore
     yield
     TTSProvider.reset()  # type: ignore
     SpeakerProvider.reset()  # type: ignore
+    STTProvider.reset()  # type: ignore
 
 
 class TestTTSSpeakerIntegration:
@@ -243,3 +246,79 @@ class TestTTSSpeakerDataProperties:
         assert data["volume"] == 0.8
 
         speaker.stop()
+
+
+class TestSpeakerSTTEchoPrevention:
+    """Test Speaker↔STT echo prevention integration."""
+
+    @patch("providers.speaker_provider.pyaudio")
+    def test_playback_pauses_stt(self, mock_pyaudio):
+        """Test that speaker playback pauses STT."""
+        mock_pa_instance = MagicMock()
+        mock_pyaudio.PyAudio.return_value = mock_pa_instance
+        mock_pyaudio.paInt16 = 8
+        mock_stream = MagicMock()
+        mock_stream.is_active.return_value = True
+        mock_pa_instance.open.return_value = mock_stream
+
+        speaker = SpeakerProvider(sample_rate=24000)
+        speaker.start()
+
+        stt = STTProvider(
+            ws_url="wss://test.com",
+            api_key="test",
+            language="korean",
+        )
+        stt.start()
+
+        assert stt.is_listening() is True
+
+        # Register echo prevention callback
+        def on_playback_state(state: str):
+            if state == "playing":
+                stt.pause()
+            elif state in ("completed", "stopped"):
+                stt.resume()
+
+        speaker.register_playback_callback(on_playback_state)
+
+        # Simulate playback state changes
+        speaker._notify_playback_state("playing")
+        assert stt.is_listening() is False
+
+        speaker._notify_playback_state("completed")
+        assert stt.is_listening() is True
+
+        stt.stop()
+        speaker.stop()
+
+    @patch("providers.speaker_provider.pyaudio")
+    def test_audio_dropped_during_playback(self, mock_pyaudio):
+        """Test that audio is dropped when STT is paused during playback."""
+        mock_pa_instance = MagicMock()
+        mock_pyaudio.PyAudio.return_value = mock_pa_instance
+        mock_pyaudio.paInt16 = 8
+        mock_stream = MagicMock()
+        mock_stream.is_active.return_value = True
+        mock_pa_instance.open.return_value = mock_stream
+
+        stt = STTProvider(
+            ws_url="wss://test.com",
+            api_key="test",
+            language="korean",
+        )
+        stt.start()
+
+        # Pause (simulating speaker playing)
+        stt.pause()
+        stt.send_audio(b"\x00\x00" * 100)
+
+        # Audio should not reach the queue
+        if stt._audio_queue is not None:
+            assert stt._audio_queue.qsize() == 0
+
+        # Resume
+        stt.resume()
+        assert stt.is_listening() is True
+
+        stt.stop()

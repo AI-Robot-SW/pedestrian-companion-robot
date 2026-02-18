@@ -28,8 +28,8 @@ from pydantic import Field
 
 from backgrounds.base import Background, BackgroundConfig
 
-from ...providers.tts_provider import TTSProvider, TTSBackend
-from ...providers.speaker_provider import SpeakerProvider
+from providers.tts_provider import TTSProvider, TTSBackend
+from providers.speaker_provider import SpeakerProvider
 
 
 class TTSBgConfig(BackgroundConfig):

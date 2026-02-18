@@ -276,25 +276,25 @@ class STTProvider:
         """STT 최종 결과 콜백 등록."""
         if callback not in self._result_callbacks:
             self._result_callbacks.append(callback)
-            logging.debug("STT result callback registered: %s", callback.__name__)
+            logging.debug("STT result callback registered: %s", getattr(callback, '__name__', repr(callback)))
 
     def unregister_result_callback(self, callback: Callable[[str], None]) -> None:
         """STT 최종 결과 콜백 해제."""
         if callback in self._result_callbacks:
             self._result_callbacks.remove(callback)
-            logging.debug("STT result callback unregistered: %s", callback.__name__)
+            logging.debug("STT result callback unregistered: %s", getattr(callback, '__name__', repr(callback)))
 
     def register_interim_callback(self, callback: Callable[[str], None]) -> None:
         """STT 중간 결과 콜백 등록."""
         if callback not in self._interim_callbacks:
             self._interim_callbacks.append(callback)
-            logging.debug("STT interim callback registered: %s", callback.__name__)
+            logging.debug("STT interim callback registered: %s", getattr(callback, '__name__', repr(callback)))
 
     def unregister_interim_callback(self, callback: Callable[[str], None]) -> None:
         """STT 중간 결과 콜백 해제."""
         if callback in self._interim_callbacks:
             self._interim_callbacks.remove(callback)
-            logging.debug("STT interim callback unregistered: %s", callback.__name__)
+            logging.debug("STT interim callback unregistered: %s", getattr(callback, '__name__', repr(callback)))
 
     # ---- WebSocket handler ----
 
@@ -508,10 +508,29 @@ class STTProvider:
 
     # ---- Audio send ----
 
+    def pause(self) -> None:
+        """STT 일시 중지 (에코 방지: 스피커 재생 중 오디오 드롭)."""
+        with self._lock:
+            if not self._is_listening:
+                return
+            self._is_listening = False
+        logging.info("STTProvider paused (echo prevention)")
+
+    def resume(self) -> None:
+        """STT 재개."""
+        with self._lock:
+            if self._is_listening:
+                return
+            self._is_listening = True
+        logging.info("STTProvider resumed")
+
     def send_audio(self, audio_chunk: bytes) -> None:
         """오디오 데이터를 ASR 서비스로 전송."""
         if not self.running:
             logging.warning("STTProvider is not running. Call start() first.")
+            return
+
+        if not self._is_listening:
             return
 
         if self.backend == STTBackend.GOOGLE_CLOUD:

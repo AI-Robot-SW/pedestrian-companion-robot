@@ -23,7 +23,7 @@ from typing import Optional
 from pydantic import Field
 
 from backgrounds.base import Background, BackgroundConfig
-from ...providers.speaker_provider import SpeakerProvider
+from providers.speaker_provider import SpeakerProvider
 
 
 class SpeakerBgConfig(BackgroundConfig):

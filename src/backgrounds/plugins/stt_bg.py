@@ -35,6 +35,7 @@ from backgrounds.base import Background, BackgroundConfig
 
 from providers.stt_provider import STTProvider, STTBackend
 from providers.audio_provider import AudioProvider
+from providers.speaker_provider import SpeakerProvider
 
 
 class STTBgConfig(BackgroundConfig):
@@ -191,6 +192,10 @@ class STTBg(Background[STTBgConfig]):
                 "AudioProvider is not running. Start AudioBg to capture microphone audio."
             )
 
+        # Speaker↔STT 에코 방지: 스피커 재생 중 STT 일시 중지
+        self._speaker_provider = SpeakerProvider()
+        self._speaker_provider.register_playback_callback(self._on_playback_state)
+
         self._last_health_check = time.time()
         self._consecutive_failures = 0
         self._reconnect_attempts = 0
@@ -199,6 +204,23 @@ class STTBg(Background[STTBgConfig]):
             f"STTBg initialized: backend={backend}, language={language}, "
             f"model={model}"
         )
+
+    def _on_playback_state(self, state: str) -> None:
+        """
+        SpeakerProvider 재생 상태 변경 콜백.
+
+        스피커 재생 중에는 STT를 일시 중지하여
+        자기 음성이 인식되는 것을 방지합니다.
+
+        Parameters
+        ----------
+        state : str
+            재생 상태 ("started", "playing", "paused", "stopped", "completed")
+        """
+        if state == "playing":
+            self.stt_provider.pause()
+        elif state in ("completed", "stopped"):
+            self.stt_provider.resume()
 
     def _health_check(self) -> bool:
         """
