@@ -1,5 +1,5 @@
 """
-Tests for TTSConnector.
+Tests for SpeakConnector.
 """
 
 import sys
@@ -13,7 +13,7 @@ mock_pyaudio.PyAudio = MagicMock()
 mock_pyaudio.paInt16 = 8
 sys.modules["pyaudio"] = mock_pyaudio
 
-from actions.speak.connector.tts_connector import TTSConnector, TTSConnectorConfig
+from actions.speak.connector.speak_connector import SpeakConnector, SpeakConnectorConfig
 from actions.speak.interface import SpeakInput
 from providers.speaker_provider import SpeakerProvider
 from providers.tts_provider import TTSBackend, TTSProvider
@@ -57,12 +57,12 @@ def setup_providers():
         speaker.stop()
 
 
-class TestTTSConnectorInitialization:
-    """Test TTSConnector initialization."""
+class TestSpeakConnectorInitialization:
+    """Test SpeakConnector initialization."""
 
     @patch("providers.speaker_provider.pyaudio")
     def test_default_initialization(self, mock_pa):
-        """Test TTSConnector initializes with default config."""
+        """Test SpeakConnector initializes with default config."""
         mock_pa_instance = MagicMock()
         mock_pa.PyAudio.return_value = mock_pa_instance
         mock_pa.paInt16 = 8
@@ -77,23 +77,23 @@ class TestTTSConnectorInitialization:
             naver_client_secret="test_secret",
         )
 
-        config = TTSConnectorConfig()
-        connector = TTSConnector(config)
+        config = SpeakConnectorConfig()
+        connector = SpeakConnector(config)
 
         assert connector.tts_enabled is True
         assert connector.config.enable_tts_interrupt is True
 
 
-class TestTTSConnectorConnect:
-    """Test TTSConnector connect method."""
+class TestSpeakConnectorConnect:
+    """Test SpeakConnector connect method."""
 
     @pytest.mark.asyncio
     async def test_connect_queues_text(self, setup_providers):
         """Test connect adds text to TTS queue."""
         tts, speaker = setup_providers
 
-        config = TTSConnectorConfig()
-        connector = TTSConnector(config)
+        config = SpeakConnectorConfig()
+        connector = SpeakConnector(config)
 
         speak_input = SpeakInput(action="안녕하세요")
         await connector.connect(speak_input)
@@ -105,8 +105,8 @@ class TestTTSConnectorConnect:
         """Test connect skips empty text."""
         tts, speaker = setup_providers
 
-        config = TTSConnectorConfig()
-        connector = TTSConnector(config)
+        config = SpeakConnectorConfig()
+        connector = SpeakConnector(config)
 
         speak_input = SpeakInput(action="")
         await connector.connect(speak_input)
@@ -118,8 +118,8 @@ class TestTTSConnectorConnect:
         """Test connect skips when TTS is disabled."""
         tts, speaker = setup_providers
 
-        config = TTSConnectorConfig()
-        connector = TTSConnector(config)
+        config = SpeakConnectorConfig()
+        connector = SpeakConnector(config)
         connector.tts_enabled = False
 
         speak_input = SpeakInput(action="테스트")
@@ -132,8 +132,8 @@ class TestTTSConnectorConnect:
         """Test connect calls stop_playback when interrupt is True."""
         tts, speaker = setup_providers
 
-        config = TTSConnectorConfig(enable_tts_interrupt=True)
-        connector = TTSConnector(config)
+        config = SpeakConnectorConfig(enable_tts_interrupt=True)
+        connector = SpeakConnector(config)
 
         speak_input = SpeakInput(action="테스트", interrupt=True)
         await connector.connect(speak_input)

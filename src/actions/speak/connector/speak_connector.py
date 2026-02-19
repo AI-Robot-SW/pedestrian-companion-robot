@@ -1,10 +1,10 @@
 """
-TTS Connector - SpeakAction을 TTSProvider로 연결
+Speak Connector - SpeakAction을 TTSProvider로 연결
 
 이 모듈은 SpeakInput.action 텍스트를 TTSProvider 싱글턴으로 라우팅합니다.
 
 Architecture:
-    LLM -> SpeakAction -> TTSConnector.connect() -> TTSProvider().add_pending_message()
+    LLM -> SpeakAction -> SpeakConnector.connect() -> TTSProvider().add_pending_message()
                                                            ↓ (TTSBg에서 등록됨)
                                                      SpeakerProvider().queue_audio()
 
@@ -25,9 +25,9 @@ from providers.tts_provider import TTSProvider
 from providers.speaker_provider import SpeakerProvider
 
 
-class TTSConnectorConfig(ActionConfig):
+class SpeakConnectorConfig(ActionConfig):
     """
-    TTS Connector 설정.
+    Speak Connector 설정.
 
     Parameters
     ----------
@@ -40,7 +40,7 @@ class TTSConnectorConfig(ActionConfig):
     )
 
 
-class TTSConnector(ActionConnector[TTSConnectorConfig, SpeakInput]):
+class SpeakConnector(ActionConnector[SpeakConnectorConfig, SpeakInput]):
     """
     SpeakAction을 TTSProvider 싱글턴으로 연결하는 커넥터.
 
@@ -48,7 +48,7 @@ class TTSConnector(ActionConnector[TTSConnectorConfig, SpeakInput]):
     TTS 변환 및 스피커 출력을 수행합니다.
     """
 
-    def __init__(self, config: TTSConnectorConfig):
+    def __init__(self, config: SpeakConnectorConfig):
         super().__init__(config)
 
         self._tts_provider = TTSProvider()
@@ -56,7 +56,7 @@ class TTSConnector(ActionConnector[TTSConnectorConfig, SpeakInput]):
 
         self.tts_enabled = True
 
-        logging.info("TTSConnector initialized")
+        logging.info("SpeakConnector initialized")
 
     async def connect(self, output_interface: SpeakInput) -> None:
         """
@@ -83,4 +83,4 @@ class TTSConnector(ActionConnector[TTSConnectorConfig, SpeakInput]):
         # TTSProvider에 텍스트 전달
         self._tts_provider.add_pending_message(text)
 
-        logging.debug("TTSConnector: text queued for TTS: %s", text[:50])
+        logging.debug("SpeakConnector: text queued for TTS: %s", text[:50])
