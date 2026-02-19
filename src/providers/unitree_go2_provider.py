@@ -357,7 +357,7 @@ class UnitreeGo2Provider:
         except Exception as e:
             logging.debug("UnitreeGo2Provider: heartbeat failed: %s", e)
             return False
-
+    
     @property
     def data(self) -> Optional[dict]:
         """
