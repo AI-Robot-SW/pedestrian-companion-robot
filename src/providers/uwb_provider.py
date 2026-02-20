@@ -29,7 +29,7 @@ class UwbProvider:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             return
         
         self._stop_evt.clear()
@@ -41,12 +41,11 @@ class UwbProvider:
             return
         
         self._stop_evt.set()
-
         with self.write_lock:
             self.ser.write(b"\r")
             self.ser.flush()
-
         self._thread.join(timeout=2.0)
+
         if not self._thread.is_alive():
             self._thread = None
 
@@ -59,7 +58,7 @@ class UwbProvider:
         if rec is None:
             return None
         return {
-            "timestamp": rec.t_monotonic,
+            "t_monotonic": rec.t_monotonic,
             "x_m": rec.x_m,
             "y_m": rec.y_m,
             "z_m": rec.z_m,
@@ -135,6 +134,10 @@ class UwbProvider:
         while not self._stop_evt.is_set():
             chunk = self._read_some()
 
+            if not chunk:
+                self._stop_evt.wait(0.01)
+                continue
+            
             buf.extend(chunk)
             for line in self._extract_lines(buf):
                 rec = self._parse_lep(line)
