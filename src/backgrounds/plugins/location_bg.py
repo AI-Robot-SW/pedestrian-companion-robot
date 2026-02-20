@@ -10,7 +10,6 @@ from typing import Optional
 from pydantic import Field
 
 from backgrounds.base import Background, BackgroundConfig
-from providers.gnss_provider import GnssProvider
 from providers.rtk_provider import RtkProvider
 from providers.uwb_provider import UwbProvider
 from providers.location_provider import LocationProvider
@@ -35,13 +34,6 @@ class LocationBgConfig(BackgroundConfig):
 
 
 class LocationBg(Background[LocationBgConfig]):
-    """
-    Location Background (RTK-only)
-
-    - GNSS는 무조건 RtkProvider로 실행
-    - run()은 start/유지/stop만 담당
-    """
-
     def __init__(self, config: LocationBgConfig):
         super().__init__(config)
 
@@ -52,7 +44,7 @@ class LocationBg(Background[LocationBgConfig]):
         self._gnss_ser = serial.Serial(self.config.gnss_port, self.config.gnss_baud, timeout=1.0)
         self._uwb_ser = serial.Serial(self.config.uwb_port, self.config.uwb_baud, timeout=0.2)
 
-        gnss = RtkProvider(
+        rtk = RtkProvider(
             ser=self._gnss_ser,
             measRate_ms=self.config.gnss_meas_rate_ms,
             caster=self.config.rtk_caster,
@@ -63,7 +55,7 @@ class LocationBg(Background[LocationBgConfig]):
         )
         uwb = UwbProvider(ser=self._uwb_ser)
 
-        self.location_provider = LocationProvider(gnss=gnss, uwb=uwb)
+        self.location_provider = LocationProvider(gnss=rtk, uwb=uwb)
 
 
     def run(self) -> None:

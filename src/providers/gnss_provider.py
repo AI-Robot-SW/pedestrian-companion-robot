@@ -5,12 +5,12 @@ from __future__ import annotations
 import time
 import threading
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from pyubx2 import UBXReader, UBXMessage, SET, UBX_PROTOCOL
 
 
-@dataclass
+@dataclass(frozen = True)
 class UbxPvtRecord:
     t_monotonic: float
     hour: Optional[int]
@@ -40,11 +40,11 @@ class GnssProvider:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             return
 
         self._stop_evt.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="GnssUbxWorker")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="GnssReader")
         self._thread.start()
 
     def stop(self) -> None:
@@ -53,6 +53,7 @@ class GnssProvider:
         
         self._stop_evt.set()
         self._thread.join(timeout=2.0)
+
         if not self._thread.is_alive():
             self._thread = None
 
@@ -133,6 +134,7 @@ class GnssProvider:
             try:
                 _, parsed = ubr.read()
             except Exception:
+                self._stop_evt.wait(0.01)
                 continue
 
             if isinstance(parsed, UBXMessage) and parsed.identity == "NAV-PVT":
