@@ -35,7 +35,8 @@ Pedestrian Companion Robot is an autonomous navigation system built on the OpenM
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/AI-Robot-SW/openmind-interaction-autonomy.git
+   git clone --recurse-submodules https://github.com/AI-Robot-SW/pedestrian-companion-robot.git
+   
    cd openmind-interaction-autonomy
    ```
 
